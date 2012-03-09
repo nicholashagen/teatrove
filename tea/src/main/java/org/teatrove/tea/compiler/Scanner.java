@@ -1,45 +1,86 @@
-/*
- *  Copyright 1997-2011 teatrove.org
+/* ====================================================================
+ * Tea - Copyright (c) 1997-2000 Walt Disney Internet Group
+ * ====================================================================
+ * The Tea Software License, Version 1.1
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Copyright (c) 2000 Walt Disney Internet Group. All rights reserved.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in
+ *    the documentation and/or other materials provided with the
+ *    distribution.
+ *
+ * 3. The end-user documentation included with the redistribution,
+ *    if any, must include the following acknowledgment:
+ *       "This product includes software developed by the
+ *        Walt Disney Internet Group (http://opensource.go.com/)."
+ *    Alternately, this acknowledgment may appear in the software itself,
+ *    if and wherever such third-party acknowledgments normally appear.
+ *
+ * 4. The names "Tea", "TeaServlet", "Kettle", "Trove" and "BeanDoc" must
+ *    not be used to endorse or promote products derived from this
+ *    software without prior written permission. For written
+ *    permission, please contact opensource@dig.com.
+ *
+ * 5. Products derived from this software may not be called "Tea",
+ *    "TeaServlet", "Kettle" or "Trove", nor may "Tea", "TeaServlet",
+ *    "Kettle", "Trove" or "BeanDoc" appear in their name, without prior
+ *    written permission of the Walt Disney Internet Group.
+ *
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED.  IN NO EVENT SHALL THE WALT DISNEY INTERNET GROUP OR ITS
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * ====================================================================
+ *
+ * For more information about Tea, please see http://opensource.go.com/.
  */
 
 package org.teatrove.tea.compiler;
 
-import java.io.*;
-import java.util.Vector;
+import java.io.IOException;
+import java.io.StringReader;
 import java.util.Stack;
+import java.util.Vector;
+
 import org.teatrove.trove.io.SourceReader;
 
-/**
+/******************************************************************************
  * A Scanner breaks up a source file into its basic elements, called
  * {@link Token Tokens}. Add an {@link ErrorListener} to capture any syntax
  * errors detected by the Scanner.
  *
  * @author Brian S O'Neill
+ * @version
+ * <!--$$Revision:--> 47 <!-- $-->, <!--$$JustDate:--> 11/14/03 <!-- $-->
  */
 public class Scanner {
+    private Tokens mTokens;
     private SourceReader mSource;
     private CompilationUnit mUnit;
 
     private boolean mEmitSpecial;
 
-    /** StringBuffer for temporary use. */
+    /** StringBuilder for temporary use. */
     private StringBuilder mWord = new StringBuilder(20);
 
     /** The scanner supports any amount of lookahead. */
     private Stack<Token> mLookahead = new Stack<Token>();
-    
+
     private Token mEOFToken;
 
     private Vector<ErrorListener> mListeners = new Vector<ErrorListener>(1);
@@ -47,13 +88,15 @@ public class Scanner {
 
     private MessageFormatter mFormatter;
 
-    public Scanner(SourceReader in) {
-        this(in, null);
+    public Scanner(SourceReader in, Annotations annotations) {
+        this(in, annotations, null);
     }
 
-    public Scanner(SourceReader in, CompilationUnit unit) {
+    public Scanner(SourceReader in, Annotations annotations,
+                   CompilationUnit unit) {
         mSource = in;
         mUnit = unit;
+        mTokens = new Tokens(annotations);
         mFormatter = MessageFormatter.lookup(this);
     }
 
@@ -108,7 +151,7 @@ public class Scanner {
         }
     }
 
-    /** 
+    /**
      * Returns EOF as the last token.
      */
     public synchronized Token peekToken() throws IOException {
@@ -135,17 +178,18 @@ public class Scanner {
     private Token scanToken() throws IOException {
         int c;
         int peek;
-        
+
         int startPos;
 
         while ((c = mSource.read()) != -1) {
             switch (c) {
 
+            // handle special case of entering text-block (non code)
             case SourceReader.ENTER_TEXT:
                 Token enter;
                 if (mEmitSpecial) {
-                    enter = makeStringToken(Token.ENTER_TEXT,
-                                            mSource.getEndTag());
+                    enter = mTokens.makeToken(Tokens.ENTER_TEXT, "ENTER_TEXT",
+                                              mSource.getEndTag(), mSource);
                 }
                 else {
                     enter = null;
@@ -166,151 +210,24 @@ public class Scanner {
 
                 return t;
 
+            // handle special case of entering code block
             case SourceReader.ENTER_CODE:
                 // Entering code while in code is illegal. Just let the parser
                 // deal with it.
-                return makeStringToken(Token.ENTER_CODE,
-                                       mSource.getBeginTag());
+                return mTokens.makeToken(Tokens.ENTER_CODE, "ENTER_CODE",
+                                         mSource.getBeginTag(), mSource);
 
-            case '(':
-                return makeToken(Token.LPAREN);
-            case ')':
-                return makeToken(Token.RPAREN);
-
-            case '{':
-                return makeToken(Token.LBRACE);
-            case '}':
-                return makeToken(Token.RBRACE);
-
-            case '[':
-                return makeToken(Token.LBRACK);
-            case ']':
-                return makeToken(Token.RBRACK);
-                
-            case ';':
-                return makeToken(Token.SEMI);
-                
-            case ',':
-                return makeToken(Token.COMMA);
-                
-            case ':':
-                return makeToken(Token.COLON);
-                
-            case '?':
-                return makeToken(Token.QUESTION);
-
+            // handle floating-point literals
             case '.':
                 peek = mSource.peek();
-
                 if (peek >= '0' && peek <= '9') {
                     error("number.decimal.start");
                     return scanNumber(c);
                 }
-                else if (peek == '.') {
-                    startPos = mSource.getStartPosition();
-                    // read the second '.'
-                    mSource.read();
 
-                    peek = mSource.peek();
-                    if (peek == '.') {
-                        // read the third '.'
-                        mSource.read();
-                        return makeToken(Token.ELLIPSIS, startPos);
-                    }
-                    else {
-                        return makeToken(Token.DOTDOT, startPos);
-                    }
-                }
-                else {
-                    return makeToken(Token.DOT);
-                }
-                
-            case '#':
-                peek = mSource.peek();
-                
-                if (peek == '#') {
-                    startPos = mSource.getStartPosition();
-                    mSource.read();
-                    return makeToken(Token.DOUBLE_HASH, startPos);
-                }
-                else {
-                    return makeToken(Token.HASH);
-                }
-                
-            case '!':
-                if (mSource.peek() == '=') {
-                    startPos = mSource.getStartPosition();
-                    mSource.read();
-                    return makeToken(Token.NE, startPos);
-                }
-                else {
-                    return makeStringToken(Token.UNKNOWN,
-                                           String.valueOf((char)c));
-                }
-                
-            case '<':
-                if (mSource.peek() == '=') {
-                    startPos = mSource.getStartPosition();
-                    mSource.read();
-                    if (mSource.peek() == '>') {
-                        mSource.read();
-                        return makeToken(Token.SPACESHIP, startPos);
-                    }
-                    else {
-                        return makeToken(Token.LE, startPos);
-                    }
-                }
-                else {
-                    return makeToken(Token.LT);
-                }
-                
-            case '>':
-                if (mSource.peek() == '=') {
-                    startPos = mSource.getStartPosition();
-                    mSource.read();
-                    return makeToken(Token.GE, startPos);
-                }
-                else {
-                    return makeToken(Token.GT);
-                }
+                break;
 
-            case '=':
-                if (mSource.peek() == '=') {
-                    startPos = mSource.getStartPosition();
-                    mSource.read();
-                    return makeToken(Token.EQ, startPos);
-                }
-                if (mSource.peek() == '>') {
-                    startPos = mSource.getStartPosition();
-                    mSource.read();
-                    return makeToken(Token.EQUAL_GREATER, startPos);
-                }
-                else {
-                    return makeToken(Token.ASSIGN);
-                }
-
-            case '&':
-                return makeToken(Token.CONCAT);
-
-            case '+':
-                return makeToken(Token.PLUS);
-                
-            case '-':
-                return makeToken(Token.MINUS);
-                
-            case '*':
-                if (mSource.peek() == '.') {
-                    startPos = mSource.getStartPosition();
-                    mSource.read();
-                    return makeToken(Token.SPREAD, startPos);
-                }
-                else {
-                    return makeToken(Token.MULT);
-                }
-                
-            case '%':
-                return makeToken(Token.MOD);
-                
+            // handle comments
             case '/':
                 startPos = mSource.getStartPosition();
                 peek = mSource.peek();
@@ -338,20 +255,23 @@ public class Scanner {
                     }
                 }
                 else {
-                    return makeToken(Token.DIV);
+                    break;
                 }
-                
+
+            // handle quoted strings
             case '\"':
             case '\'':
                 mSource.ignoreTags(true);
                 t = scanString(c);
                 mSource.ignoreTags(false);
                 return t;
-                
-            case '0': case '1': case '2': case '3': case '4': 
+
+            // handle numeric literals
+            case '0': case '1': case '2': case '3': case '4':
             case '5': case '6': case '7': case '8': case '9':
                 return scanNumber(c);
-                
+
+            // handle identifier/keyword literals
             case 'a': case 'b': case 'c': case 'd': case 'e':
             case 'f': case 'g': case 'h': case 'i': case 'j':
             case 'k': case 'l': case 'm': case 'n': case 'o':
@@ -366,10 +286,11 @@ public class Scanner {
             case 'Z': case '_':
                 return scanIdentifier(c);
 
-            case ' ': 
+            // handle whitespace
+            case ' ':
             case '\0':
-            case '\t': 
-            case '\r': 
+            case '\t':
+            case '\r':
             case '\n':
                 continue;
 
@@ -381,17 +302,22 @@ public class Scanner {
                 if (Character.isLetter((char)c)) {
                     return scanIdentifier(c);
                 }
-                else {
-                    return makeStringToken(Token.UNKNOWN,
-                                           String.valueOf((char)c));
-                }
             }
+
+            // lookup token for best match
+            Token token = mTokens.scanToken(c, mSource);
+            if (token == null) {
+                token = mTokens.makeToken(Tokens.UNKNOWN, "UNKNOWN",
+                                          String.valueOf((char)c), mSource);
+            }
+
+            return token;
         }
 
         if (mEOFToken == null) {
-            mEOFToken = makeToken(Token.EOF);
+            mEOFToken = mTokens.makeToken(Tokens.EOF, "EOF", mSource);
         }
-        
+
         return mEOFToken;
     }
 
@@ -409,8 +335,11 @@ public class Scanner {
         while (c != -1) {
             if (c == SourceReader.ENTER_CODE) {
                 if (mEmitSpecial) {
-                    mLookahead.push(makeStringToken(Token.ENTER_CODE,
-                                                    mSource.getBeginTag()));
+                    mLookahead.push
+                    (
+                        mTokens.makeToken(Tokens.ENTER_CODE, "ENTER_CODE",
+                                          mSource.getBeginTag(), mSource)
+                    );
                 }
                 break;
             }
@@ -433,7 +362,7 @@ public class Scanner {
             // whitespace from it.
 
             int length = buf.length();
-            
+
             int i;
             for (i = length - 1; i >= 0; i--) {
                 if (buf.charAt(i) > ' ') {
@@ -445,16 +374,16 @@ public class Scanner {
         }
 
         String str = buf.toString();
-        return new StringToken(startLine, startPos, endPos,
-                               Token.STRING, str);
+        return mTokens.makeToken(Tokens.STRING, "STRING", str,
+                                startLine, startPos, endPos);
     }
-    
+
     private Token scanString(int delimiter) throws IOException {
         int c;
         int startLine = mSource.getLineNumber();
         int startPos = mSource.getStartPosition();
         mWord.setLength(0);
-        
+
         while ( (c = mSource.read()) != -1 ) {
             if (c == delimiter) {
                 break;
@@ -464,7 +393,7 @@ public class Scanner {
                 error("string.newline");
                 break;
             }
-            
+
             if (c == '\\') {
                 int next = mSource.read();
                 switch (next) {
@@ -501,7 +430,7 @@ public class Scanner {
                     break;
                 }
             }
-            
+
             mWord.append((char)c);
         }
 
@@ -509,12 +438,10 @@ public class Scanner {
             error("string.eof");
         }
 
-        Token t = new StringToken(startLine,
-                                  startPos, 
-                                  mSource.getEndPosition(),
-                                  Token.STRING,
-                                  mWord.toString()); 
-        
+        Token t = mTokens.makeToken(Tokens.STRING, "STRING", mWord.toString(),
+                                    startLine, startPos,
+                                    mSource.getEndPosition());
+
         return t;
     }
 
@@ -523,18 +450,18 @@ public class Scanner {
         int startLine = mSource.getLineNumber();
         int startPos = mSource.getStartPosition();
         mWord.setLength(0);
-        
+
         int errorPos = -1;
 
-        // 0 is decimal int, 
-        // 1 is hex int, 
-        // 2 is decimal long, 
-        // 3 is hex long, 
-        // 4 is float, 
+        // 0 is decimal int,
+        // 1 is hex int,
+        // 2 is decimal long,
+        // 3 is hex long,
+        // 4 is float,
         // 5 is double,
         // 6 is auto-double by decimal
         // 7 is auto-double by exponent ('e' or 'E')
-        int type = 0; 
+        int type = 0;
 
         if (c == '0') {
             if (mSource.peek() == 'x' || mSource.peek() == 'X') {
@@ -649,14 +576,14 @@ public class Scanner {
                 break;
             }
         }
-        
+
         String str = mWord.toString();
         int endPos = mSource.getEndPosition();
         Token token;
 
         if (errorPos >= 0) {
-            token = new StringToken
-                (startLine, startPos, endPos, errorPos, Token.NUMBER, str);
+            token = mTokens.makeToken(Tokens.NUMBER, "NUMBER", str,
+                                      startLine, startPos, endPos, errorPos);
         }
         else {
             try {
@@ -711,7 +638,7 @@ public class Scanner {
 
         return token;
     }
-    
+
     private int parseHexInt(String str) {
         if (str.length() > 8) {
             // Strip off any leading zeros.
@@ -762,7 +689,7 @@ public class Scanner {
         int startPos = mSource.getStartPosition();
         int endPos = mSource.getEndPosition();
         mWord.setLength(0);
-        
+
         mWord.append((char)c);
 
     loop:
@@ -779,15 +706,15 @@ public class Scanner {
             case 'K': case 'L': case 'M': case 'N': case 'O':
             case 'P': case 'Q': case 'R': case 'S': case 'T':
             case 'U': case 'V': case 'W': case 'X': case 'Y':
-            case 'Z': case '_': case '$':
-            case '0': case '1': case '2': case '3': case '4': 
+            case 'Z': case '_':
+            case '0': case '1': case '2': case '3': case '4':
             case '5': case '6': case '7': case '8': case '9':
                 mSource.read();
                 endPos = mSource.getEndPosition();
                 mWord.append((char)c);
                 continue loop;
             }
-                
+
             if (Character.isLetterOrDigit((char)c)) {
                 mSource.read();
                 endPos = mSource.getEndPosition();
@@ -797,23 +724,22 @@ public class Scanner {
                 break;
             }
         }
-        
-        int id = Token.findReservedWordID(mWord);
-        
-        Token t;
 
-        if (id != Token.UNKNOWN) {
-            t = new Token(startLine, startPos, endPos, id);
+        KeywordDefinition def = mTokens.findKeyword(mWord.toString());
+        Token t = null;
+        if (def != null) {
+            t = mTokens.makeToken(def.getId(), def.getName(),
+                                  startLine, startPos, endPos);
         }
         else {
-            t = new StringToken(startLine, startPos, endPos,
-                                Token.IDENT, mWord.toString());
+            t = mTokens.makeToken(Tokens.IDENT, "IDENT", mWord.toString(),
+                                  startLine, startPos, endPos);
         }
 
         mWord.setLength(0);
         return t;
     }
-    
+
     // The two leading slashes have already been scanned when this is
     // called.
     private Token scanOneLineComment(int startPos) throws IOException {
@@ -827,15 +753,15 @@ public class Scanner {
             if (c == '\r' || c == '\n') {
                 break;
             }
-            
+
             mSource.read();
             mWord.append((char)c);
 
             endPos = mSource.getEndPosition();
         }
 
-        return new StringToken(startLine, startPos, endPos,
-                               Token.COMMENT, mWord.toString());
+        return mTokens.makeToken(Tokens.COMMENT, "COMMENT", mWord.toString(),
+                                 startLine, startPos, endPos);
     }
 
     // The leading slash and star has already been scanned when this is
@@ -862,112 +788,40 @@ public class Scanner {
             error("comment.eof");
         }
 
-        return new StringToken(startLine, startPos, mSource.getEndPosition(),
-                               Token.COMMENT, mWord.toString());
-    }
-
-    private Token makeToken(int ID) {
-        return new Token(mSource.getLineNumber(), 
-                         mSource.getStartPosition(),
-                         mSource.getEndPosition(),
-                         ID);
-    }
-
-    private Token makeToken(int ID, int startPos) {
-        return new Token(mSource.getLineNumber(), 
-                         startPos,
-                         mSource.getEndPosition(),
-                         ID);
-    }
-
-    private Token makeStringToken(int ID, String str) {
-        return new StringToken(mSource.getLineNumber(), 
-                               mSource.getStartPosition(),
-                               mSource.getEndPosition(),
-                               ID,
-                               str);
-    }
-
-    /** 
-     * Simple test program 
-     */
-    public static void main(String[] arg) throws Exception {
-        Tester.test(arg);
+        return mTokens.makeToken(Tokens.COMMENT, "COMMENT", mWord.toString(),
+                                 startLine, startPos, mSource.getEndPosition());
     }
 
     /**
-     * 
-     * @author Brian S O'Neill
+     * Simple test program
      */
-    private static class Tester {
-        public static void test(String[] arg) throws Exception {
-            Token token;
-            Reader file;
-            Scanner s;
+    public static void main(String[] arg) throws Exception {
+        // Tester.test(arg);
 
-            // First run, display tokens in program format
-            file = new BufferedReader(new FileReader(arg[2]));
-            s = new Scanner(new SourceReader(file, arg[0], arg[1]));
+        Scanner s = new Scanner
+        (
+            new SourceReader
+            (
+                new StringReader
+                (
+                    "<% template test(int id, String name) { ... } " +
+                    "a = 5; b = a; ...; d = a + b; e = #(a, b); " +
+                    "foreach (f in 1..5) { f } " +
+                    "d " +
+                    "%>"
+                ), "<%", "%>"
+            ),
+            new Annotations()
+        );
 
-            while ( (token = s.readToken()).getID() != Token.EOF ) {
-                int id = token.getID();
-                
-                if (id == Token.LBRACE) {
-                    System.out.println();
-                }
-                
-                System.out.print(token + " ");
-                
-                if (id == Token.LBRACE || 
-                    id == Token.RBRACE || 
-                    id == Token.SEMI) {
-                    System.out.println();
+        s.emitSpecialTokens(true);
 
-                    if (id == Token.RBRACE) {
-                        System.out.println();
-                    }
-                }
-            }
-            
-            System.out.println("\n\n*** Full Token Dump ***\n");
-
-            // Second run, display detailed token information
-            file = new FileReader(arg[2]);
-            s = new Scanner(new SourceReader(file, arg[0], arg[1]));
-            s.emitSpecialTokens(true);
-
-            while ( (token = s.readToken()).getID() != Token.EOF ) {
-                System.out.print(token.getCode() + ": ");
-                System.out.print(token.getSourceInfo() + ": ");
-
-                if (token.getID() == Token.NUMBER) {
-                    switch (token.getNumericType()) {
-                    case 1:
-                        System.out.print("int: ");
-                        break;
-                    case 2:
-                        System.out.print("long: ");
-                        break;
-                    case 3:
-                        System.out.print("float: ");
-                        break;
-                    case 4:
-                        System.out.print("double: ");
-                        break;
-                    default:
-                        System.out.print("BAD: ");
-                        break;
-                    }
-                }
-
-                String value = token.getStringValue();
-                if (value != null) {
-                    System.out.println(value);
-                }
-                else {
-                    System.out.println(token.getImage());
-                }
-            }
+        Token token = null;
+        while ( (token = s.readToken()).getID() != Tokens.EOF ) {
+            System.out.print(token.getID() + ":" + token.getName() + ": ");
+            System.out.print(token.getStringValue() + ": ");
+            System.out.print(token.getSourceInfo() + ": ");
+            System.out.println();
         }
     }
 }

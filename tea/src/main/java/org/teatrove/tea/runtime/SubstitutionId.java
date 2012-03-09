@@ -46,7 +46,7 @@ public class SubstitutionId extends java.lang.ref.WeakReference<Class<?>> {
     }
     
     public int hashCode() {
-        Object c = get();
+        Class<?> c = get();
         return (c == null) ? mBlockId : c.hashCode() + mBlockId;
     }
     

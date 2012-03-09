@@ -18,7 +18,6 @@ package org.teatrove.tea.compiler;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.io.Reader;
 import java.util.Arrays;
 
@@ -207,12 +206,5 @@ public abstract class CompilationUnit implements ErrorListener {
      * @return An OutputStream to write compiled code to. Returning null is
      * disables code generation for this CompilationUnit.
      */
-    public abstract OutputStream getOutputStream() throws IOException;
-
-    /**
-     * Reset the output stream cleaning up or removing any files created as
-     * part of the output stream.  This is generally used when an exception
-     * occurs during code generation to the output stream.
-     */
-    public abstract void resetOutputStream();
+    public abstract CodeOutput getOutput() throws IOException;
 }

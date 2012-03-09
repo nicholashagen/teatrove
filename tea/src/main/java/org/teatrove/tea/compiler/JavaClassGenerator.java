@@ -21,7 +21,6 @@ import java.beans.IntrospectionException;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.Array;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.math.BigInteger;
@@ -34,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+import java.util.Stack;
 
 import org.teatrove.tea.parsetree.AndExpression;
 import org.teatrove.tea.parsetree.ArithmeticExpression;
@@ -49,17 +49,22 @@ import org.teatrove.tea.parsetree.ContinueStatement;
 import org.teatrove.tea.parsetree.ExceptionGuardStatement;
 import org.teatrove.tea.parsetree.Expression;
 import org.teatrove.tea.parsetree.Expression.Conversion;
+import org.teatrove.tea.parsetree.CompareExpression;
 import org.teatrove.tea.parsetree.ExpressionList;
 import org.teatrove.tea.parsetree.ExpressionStatement;
 import org.teatrove.tea.parsetree.ForeachStatement;
 import org.teatrove.tea.parsetree.FunctionCallExpression;
 import org.teatrove.tea.parsetree.IfStatement;
 import org.teatrove.tea.parsetree.ImportDirective;
+import org.teatrove.tea.parsetree.LambdaBlock;
+import org.teatrove.tea.parsetree.LambdaExpression;
+import org.teatrove.tea.parsetree.LambdaStatement;
 import org.teatrove.tea.parsetree.Logical;
 import org.teatrove.tea.parsetree.Lookup;
 import org.teatrove.tea.parsetree.Name;
 import org.teatrove.tea.parsetree.NegateExpression;
 import org.teatrove.tea.parsetree.NewArrayExpression;
+import org.teatrove.tea.parsetree.NewClassExpression;
 import org.teatrove.tea.parsetree.NoOpExpression;
 import org.teatrove.tea.parsetree.Node;
 import org.teatrove.tea.parsetree.NodeVisitor;
@@ -75,9 +80,10 @@ import org.teatrove.tea.parsetree.SpreadExpression;
 import org.teatrove.tea.parsetree.Statement;
 import org.teatrove.tea.parsetree.StatementList;
 import org.teatrove.tea.parsetree.StringLiteral;
-import org.teatrove.tea.parsetree.SubstitutionStatement;
+import org.teatrove.tea.parsetree.SubstitutionExpression;
 import org.teatrove.tea.parsetree.Template;
 import org.teatrove.tea.parsetree.TemplateCallExpression;
+import org.teatrove.tea.parsetree.TemplateClass;
 import org.teatrove.tea.parsetree.TernaryExpression;
 import org.teatrove.tea.parsetree.TreeWalker;
 import org.teatrove.tea.parsetree.TypeExpression;
@@ -117,6 +123,7 @@ public class JavaClassGenerator extends CodeGenerator {
     public static final String PARAMETER_METHOD_NAME =
         "getTemplateParameterNames";
 
+    private static final String OUTER_CLASS_NAME = "outer";
     private static final String CONTEXT_PARAM_NAME = "context";
     private static final String SUB_PARAM_NAME = "sub";
 
@@ -148,7 +155,9 @@ public class JavaClassGenerator extends CodeGenerator {
     }
 
     private static TypeDesc makeDesc(Type type, boolean natural) {
-        if (natural) {
+        if (type.isDynamic()) {
+            return makeDesc(type.getClassName());
+        } else if (natural) {
             return makeDesc(type.getNaturalClass());
         } else {
             return makeDesc(type.getObjectClass());
@@ -168,7 +177,7 @@ public class JavaClassGenerator extends CodeGenerator {
     private CompilationUnit mUnit;
 
     private LocalVariable mGlobalTime;
-    private LocalVariable mSubTime;
+    // TODO: private LocalVariable mSubTime;
     
     private int mTemporary;
 
@@ -236,30 +245,49 @@ public class JavaClassGenerator extends CodeGenerator {
      *     }
      * }
      */
+    private int mSubId;
     private int mSubBlockCount;
-    private boolean mGenerateSubFormat;
+    private boolean mSharedVariables;
+    private boolean mGenerateInstance;
     private List<String> mCallerToSubNoList = new ArrayList<String>();
+
+    private CodeOutput mOutput;
+    
+    private ClassFile mClassFile;
+    private ClassFile mOuterClass;
+    
+    // maps inner class names to their class files
+    private Map<String, ClassFile> mInnerClasses =
+        new HashMap<String, ClassFile>();
 
     // Maps Variable names to variable object fields that need to be defined.
     private Map<String, Variable> mFields = new HashMap<String, Variable>();
 
-    // A list of Statements that need to be put into a static initializer.
+    // A list of Statements or Initializers that need to be put into a static 
+    // initializer.  Statements will be generated as normal and Initializers 
+    // will be executed passing in the associated class file and builder 
     private List<Object> mInitializerStatements =
         new ArrayList<Object>();
 
+    // maintains stack between inner classes
+    private Stack<ClassState> mClassStates = new Stack<ClassState>();
+    
     public JavaClassGenerator(CompilationUnit unit) {
         super(unit.getParseTree());
         mUnit = unit;
     }
 
-    public void writeTo(OutputStream out) throws IOException {
+    public void writeTo(CodeOutput out) throws IOException {
+        mOutput = out;
+
         String className = mUnit.getName();
         String targetPackage = mUnit.getTargetPackage();
         if (targetPackage != null) {
             className = targetPackage + '.' + className;
         }
 
-        ClassFile classFile = new ClassFile(className);
+        // setup class
+        ClassFile classFile = enterClass(className);
         classFile.getModifiers().setFinal(true);
 
         String sourceFile = mUnit.getSourceFileName();
@@ -270,6 +298,18 @@ public class JavaClassGenerator extends CodeGenerator {
         final Template t = getParseTree();
 
         t.accept(new TreeWalker() {
+            public Object visit(LambdaExpression node) {
+                mSubBlockCount++;
+                mGenerateInstance = true;
+                LambdaBlock block = node.getBlock();
+                if (!block.hasFinalVariables()) {
+                    mSharedVariables = true;
+                }
+                
+                return super.visit(node);
+            }
+
+           // TODO: IS THIS NEEDED...WAS NOT IN PRIOR RELEASE
             public Object visit(FunctionCallExpression node) {
                 if (node.getSubstitutionParam() != null) {
                     mSubBlockCount++;
@@ -288,16 +328,66 @@ public class JavaClassGenerator extends CodeGenerator {
 
             public Object visit(Variable node) {
                 if (node.isField()) {
-                    mGenerateSubFormat = true;
+                    mGenerateInstance = true;
                 }
                 return super.visit(node);
             }
         });
 
+        if (t instanceof TemplateClass) {
+            generateTemplateClass((TemplateClass) t, className, classFile);
+        }
+        else {
         generateTemplate(t, className, classFile);
+        }
 
-        classFile.writeTo(out);
-        out.flush();
+        // write class
+        if (!writeClassFile(classFile, mOutput, null)) {
+            mOutput.resetOutputStreams();
+            return;
+        }
+
+        
+        // write inner classes
+        for (Map.Entry<String, ClassFile> entry : mInnerClasses.entrySet()) {
+            if (!writeClassFile(entry.getValue(), mOutput, entry.getKey())) {
+                mOutput.resetOutputStreams();
+                return;
+            }
+        }
+
+        // done with class
+        exitClass();
+    }
+
+    protected boolean writeClassFile(ClassFile classFile, CodeOutput out,
+                                     String innerClass) {
+
+        OutputStream output = null;
+
+        // write main class
+        try {
+            if (innerClass == null) { output = out.getOutputStream(); }
+            else { output = out.getOutputStream(innerClass); }
+
+            classFile.writeTo(output);
+
+            output.flush();
+            output.close();
+            
+            return true;
+        }
+        catch (Exception exception) {
+            exception.printStackTrace();
+            if (output != null) {
+                try { output.close(); }
+                catch (Exception ignore) { 
+                    ignore.printStackTrace();
+                }
+            }
+
+            return false;
+        }
     }
 
     protected void generateTemplateParameters(Template t, ClassFile classFile) {
@@ -335,31 +425,6 @@ public class JavaClassGenerator extends CodeGenerator {
 
     protected void generateTemplate(Template t, String className,
                                     ClassFile classFile) {
-        Class<?> subClass;
-        Method subMethod, subContextMethod, subIdMethod, subDetachMethod;
-        if (mGenerateSubFormat) {
-            subClass = Substitution.class;
-            classFile.addInterface(subClass);
-            classFile.addInterface(Cloneable.class);
-            classFile.addInterface(java.io.Serializable.class);
-            try {
-                subMethod = subClass.getMethod("substitute");
-                subContextMethod = subClass.getMethod
-                    ("substitute", new Class[]{Context.class});
-                subIdMethod = subClass.getMethod("getIdentifier");
-                subDetachMethod = subClass.getMethod("detach");
-            }
-            catch (NoSuchMethodException e) {
-                throw new InternalError(e.toString());
-            }
-        }
-        else {
-            subClass = null;
-            subMethod = null;
-            subContextMethod = null;
-            subIdMethod = null;
-            subDetachMethod = null;
-        }
 
         // Build the static getTemplateParameterNames method.
 
@@ -375,6 +440,9 @@ public class JavaClassGenerator extends CodeGenerator {
         Modifiers pubstat = new Modifiers();
         pubstat.setPublic(true);
         pubstat.setStatic(true);
+        
+        Modifiers pvt = new Modifiers();
+        pvt.setPrivate(true);
 
         Variable[] allParams;
         if (t.hasSubstitutionParam()) {
@@ -398,9 +466,6 @@ public class JavaClassGenerator extends CodeGenerator {
         TypeDesc[] paramTypes = new TypeDesc[allParams.length];
 
         for (int i=0; i<allParams.length; i++) {
-            if (mGenerateSubFormat) {
-                allParams[i].setField(true);
-            }
             paramTypes[i] = makeDesc(allParams[i]);
         }
 
@@ -413,6 +478,11 @@ public class JavaClassGenerator extends CodeGenerator {
             returnTypeDesc = makeDesc(returnType);
         }
 
+        TypeDesc[] ctorTypes = new TypeDesc[paramTypes.length - 1];
+        for (int i = 0; i < ctorTypes.length; i++) {
+            ctorTypes[i] = paramTypes[i + 1];
+        }
+        
         MethodInfo mi = classFile.addMethod(pubstat, EXECUTE_METHOD_NAME,
                                             returnTypeDesc, paramTypes);
 
@@ -438,136 +508,45 @@ public class JavaClassGenerator extends CodeGenerator {
             builder.storeLocal(mGlobalTime);
         }
 
-        if (!mGenerateSubFormat) {
-            Visitor gen = new Visitor(allParams, builder.getParameters());
-            gen.allowInitializerStatements();
-            gen.generateNormalFormat(builder, t);
-
-        }
-        else {
-            boolean doReturnValue = !(Type.VOID_TYPE.equals(returnType));
-
-            // new <this>(params ...).substitute();
-            TypeDesc thisType = makeDesc(className);
-            builder.newObject(thisType);
+        if (mSharedVariables || mGenerateInstance) {
+            String methodName = "_".concat(EXECUTE_METHOD_NAME);
+            TypeDesc[] methodParams = { makeDesc(allParams[0]) };
+            
+            builder.newObject(makeDesc(className));
             builder.dup();
-            for (int i=0; i<localVars.length; i++) {
+            for (int i = 1; i < localVars.length; i++) {
                 builder.loadLocal(localVars[i]);
             }
-            builder.invokeConstructor(paramTypes);
-
-            if (doReturnValue) {
-                // We'll need the object again to load the field.
-                builder.dup();
-            }
-
-            builder.invoke(subMethod);
-
-            Visitor gen = new Visitor(allParams);
-            gen.allowInitializerStatements();
-
-            // Generate Substitution.substitute().
-            mi = classFile.addMethod(subMethod);
-            CodeBuilder subBuilder = new CodeBuilder(mi);
-            gen.generateContext(subBuilder);
-            Label gotContext = subBuilder.createLabel();
-            subBuilder.ifNullBranch(gotContext, false);
-            String unSupExName =
-                UnsupportedOperationException.class.getName();
-            subBuilder.newObject(makeDesc(unSupExName));
-            subBuilder.dup();
-            subBuilder.invokeConstructor(unSupExName);
-            subBuilder.throwObject();
-            gotContext.setLocation();
-            subBuilder.loadThis();
-            gen.generateContext(subBuilder);
-            subBuilder.invoke(subContextMethod);
-            subBuilder.returnVoid();
-
-            // Generate Substitution.substitute(Context).
-            mi = classFile.addMethod(subContextMethod);
-            subBuilder = new CodeBuilder(mi);
-
-            String[] subFieldNames = gen.generateSubFormat(subBuilder, t);
-
-            // inject template body profiling bytecode - end and generate event
-            if (profilingEnabled) {
-                builder.invokeStatic(mUnit.getRuntimeContext().getName(),
-                    "getInvocationObserver", methodObserverType);
-                builder.loadConstant(mUnit.getName());
-                builder.loadConstant(null);
-                builder.invokeStatic(mUnit.getRuntimeContext().getName(),
-                    "getInvocationObserver", methodObserverType);
-                builder.invokeInterface(methodObserverType.getFullName(), "currentTime",
-                    makeDesc(long.class));
-                builder.loadLocal(mGlobalTime);
-                builder.math(Opcode.LSUB);
-                builder.invokeInterface(methodObserverType.getFullName(), "invokedEvent", null,
-                    new TypeDesc[] { makeDesc(String.class), makeDesc(String.class),
-                        makeDesc(long.class) });
-            }
-
-            // Finish execute method.
-            if (doReturnValue) {
-                // If template returns something, return it here by reading
-                // from a special field.
-                builder.loadField(subFieldNames[1], returnTypeDesc);
-                builder.returnValue(makeDesc(returnType.getNaturalClass()));
-            }
-            else {
+            
+            builder.invokeConstructor(ctorTypes);
+            builder.loadLocal(builder.getParameters()[0]);
+            builder.invokeVirtual(methodName, returnTypeDesc, methodParams);
+            if (returnType == null) {
                 builder.returnVoid();
             }
-
-            // Generate getIdentifier method.
-            mi = classFile.addMethod(subIdMethod);
-            subBuilder = new CodeBuilder(mi);
-
-            TypeDesc td = makeDesc(SubstitutionId.class);
-            subBuilder.newObject(td);
-            subBuilder.dup();
-            subBuilder.loadThis();
-            subBuilder.loadThis();
-            subBuilder.loadField(subFieldNames[0], TypeDesc.INT);
-            subBuilder.invokeConstructor
-                (td.getRootName(),
-                 new TypeDesc[]{TypeDesc.OBJECT, TypeDesc.INT});
-            subBuilder.returnValue(td);
-
-            // Generate detach method.
-            mi = classFile.addMethod(subDetachMethod);
-            subBuilder = new CodeBuilder(mi);
-            subBuilder.loadThis();
-            subBuilder.invokeVirtual("clone", TypeDesc.OBJECT);
-            subBuilder.checkCast(thisType);
-            LocalVariable sub = subBuilder.createLocalVariable(null, thisType);
-            subBuilder.storeLocal(sub);
-            subBuilder.loadLocal(sub);
-            subBuilder.loadConstant(null);
-            subBuilder.storeField(gen.mContextParam.getVariable().getName(),
-                                  paramTypes[0]);
-            if (t.hasSubstitutionParam()) {
-                // Also detach internal substitution parameter.
-                subBuilder.loadLocal(sub);
-                subBuilder.loadLocal(sub);
-                String subFieldName = gen.mSubParam.getVariable().getName();
-                TypeDesc subType = makeDesc(subClass);
-                subBuilder.loadField(subFieldName, subType);
-                subBuilder.invoke(subDetachMethod);
-                subBuilder.storeField(subFieldName, subType);
+            else {
+                builder.returnValue(returnTypeDesc);
             }
-            subBuilder.loadLocal(sub);
-            subBuilder.returnValue(TypeDesc.OBJECT);
+            
+            mi = classFile.addMethod(pvt, methodName, returnTypeDesc, methodParams);
+            mi.addException("java.lang.Exception");
+            builder = new CodeBuilder(mi);
+            
+            for (int i = 1; i < allParams.length; i++) {
+                allParams[i].setField(true);
+            }
         }
+
+        Visitor gen = new Visitor(allParams, builder.getParameters());
+        gen.allowInitializerStatements();
+        gen.generateNormalFormat(builder, t);
 
         // Done building the static execute method.
 
         // Build the private constructor.
 
-        Modifiers pvt = new Modifiers();
-        pvt.setPrivate(true);
-
-        if (mGenerateSubFormat) {
-            mi = classFile.addConstructor(pvt, paramTypes);
+        if (mSharedVariables || mGenerateInstance) {
+            mi = classFile.addConstructor(pvt, ctorTypes);
         }
         else {
             mi = classFile.addConstructor(pvt);
@@ -577,7 +556,7 @@ public class JavaClassGenerator extends CodeGenerator {
         builder.loadThis();
         builder.invokeSuperConstructor();
 
-        if (mGenerateSubFormat) {
+        if (mSharedVariables || mGenerateInstance) {
             // Copy all the params to fields.
 
             localVars = builder.getParameters();
@@ -585,7 +564,7 @@ public class JavaClassGenerator extends CodeGenerator {
             for (int i=0; i<localVars.length; i++) {
                 builder.loadThis();
                 builder.loadLocal(localVars[i]);
-                builder.storeField(allParams[i].getName(), paramTypes[i]);
+                builder.storeField(allParams[i + 1].getName(), paramTypes[i + 1]);
             }
         }
 
@@ -597,11 +576,18 @@ public class JavaClassGenerator extends CodeGenerator {
             mi = classFile.addInitializer();
             builder = new CodeBuilder(mi);
 
-            Visitor gen = new Visitor(new Variable[0]);
+            gen = new Visitor(new Variable[0]);
 
             for (int i=0; i<mInitializerStatements.size(); i++) {
-                Statement stmt = (Statement)mInitializerStatements.get(i);
-                gen.generateNormalFormat(builder, stmt);
+                Object instance = mInitializerStatements.get(i);
+                if (instance instanceof Statement) {
+                    Statement stmt = (Statement) instance;
+                    gen.generateNormalFormat(builder, stmt);
+                }
+                else if (instance instanceof Initializer) {
+                    Initializer initializer = (Initializer) instance;
+                    initializer.generate(classFile, builder);
+                }
             }
 
             builder.returnVoid();
@@ -613,7 +599,7 @@ public class JavaClassGenerator extends CodeGenerator {
         // defined.
         Iterator<Variable> it = mFields.values().iterator();
         Modifiers flags = new Modifiers();
-        flags.setPrivate(true);
+        //flags.setPrivate(true);
         while (it.hasNext()) {
             Variable v = (Variable)it.next();
             flags.setStatic(v.isStatic());
@@ -623,6 +609,138 @@ public class JavaClassGenerator extends CodeGenerator {
         }
     }
 
+    protected void generateTemplateClass(TemplateClass t, String className,
+                                         ClassFile classFile) {
+
+        // build fields
+        Modifiers modifiers = new Modifiers();
+        modifiers.setPrivate(true);
+
+        Variable[] params = t.getParams();
+        int paramCount = params.length;
+        for (int i = 0; i < paramCount; i++) {
+            Variable param = params[i];
+            classFile.addField(modifiers, param.getName(), makeDesc(param));
+        }
+
+        // build template parameters
+        generateTemplateParameters(t, classFile);
+
+        // build default ctor
+        modifiers = new Modifiers();
+        modifiers.setPublic(true);
+
+        MethodInfo mi = classFile.addConstructor(modifiers, new TypeDesc[0]);
+        CodeBuilder builder = new CodeBuilder(mi);
+        builder.loadThis();
+        builder.invokeSuperConstructor(new TypeDesc[0]);
+        builder.returnVoid();
+
+        // build params-based ctor
+        TypeDesc[] ptypes = new TypeDesc[paramCount];
+        for (int i = 0; i < paramCount; i++) {
+            ptypes[i] = makeDesc(params[i]);
+        }
+
+        mi = classFile.addConstructor(modifiers, ptypes);
+        builder = new CodeBuilder(mi);
+        builder.loadThis();
+        builder.invokeSuperConstructor(new TypeDesc[0]);
+
+        for (int i = 0; i < paramCount; i++) {
+            Variable param = params[i];
+            builder.loadThis();
+            builder.loadLocal(builder.getParameters()[i]);
+            builder.storeField(param.getName(), makeDesc(param));
+        }
+
+        builder.returnVoid();
+
+        // build getters/setters
+        for (int i = 0; i < paramCount; i++) {
+            Variable param = params[i];
+
+            String name = param.getName();
+            String cname = Character.toUpperCase(name.charAt(0)) + name.substring(1);
+            String getter = "get" + cname;
+            String setter = "set" + cname;
+            TypeDesc type = makeDesc(param);
+
+            mi = classFile.addMethod(modifiers, getter, type, new TypeDesc[0]);
+            builder = new CodeBuilder(mi);
+            builder.loadThis();
+            builder.loadField(name, type);
+            builder.returnValue(type);
+
+            mi = classFile.addMethod(modifiers, setter, TypeDesc.VOID,
+                                     new TypeDesc[] { type });
+            builder = new CodeBuilder(mi);
+            builder.loadThis();
+            builder.loadLocal(builder.getParameters()[0]);
+            builder.storeField(name, type);
+            builder.returnVoid();
+        }
+
+        mi = classFile.addMethod(modifiers, "toString", TypeDesc.STRING,
+                                 new TypeDesc[0]);
+        builder = new CodeBuilder(mi);
+        builder.loadConstant(t.getName().getName());
+        builder.returnValue(TypeDesc.STRING);
+    }
+
+    protected ClassFile enterClass(String name) {
+        return enterClass(new ClassFile(name));
+    }
+    
+    protected ClassFile enterInnerClass(String name) {
+        ClassFile classFile = mOuterClass.addInnerClass(name);
+        mInnerClasses.put(name, classFile);
+        ClassFile result = enterClass(classFile);
+        return result;
+    }
+    
+    protected ClassFile enterClass(ClassFile classFile) {
+        // save state
+        ClassState state = new ClassState();
+        state.mClassFile = mClassFile;
+        state.mFields = mFields;
+        state.mInitializerStatements = mInitializerStatements;
+        
+        // add to stack
+        mClassStates.push(state);
+
+        // setup new states
+        mClassFile = classFile;
+        if (mOuterClass == null) {
+            mOuterClass = mClassFile;
+        }
+        mFields = new HashMap<String, Variable>();
+        mInitializerStatements = new ArrayList<Object>();
+        
+        // return class
+        return mClassFile;
+    }
+    
+    protected void exitClass() {
+        // pop from stack
+        ClassState state = mClassStates.pop();
+        
+        // restore state
+        mClassFile = state.mClassFile;
+        mFields = state.mFields;
+        mInitializerStatements = state.mInitializerStatements;
+    }
+
+    private static class ClassState {
+        private ClassFile mClassFile;
+
+        private Map<String, Variable> mFields = 
+            new HashMap<String, Variable>();
+
+        private List<Object> mInitializerStatements =
+            new ArrayList<Object>();
+    }
+    
     private class Visitor implements NodeVisitor {
         private CodeBuilder mBuilder;
         private int mLastLine = -1;
@@ -632,14 +750,14 @@ public class JavaClassGenerator extends CodeGenerator {
         private Map<Variable, LocalVariable> mVariableMap =
             new HashMap<Variable, LocalVariable>();
 
+        private boolean mRequireReturnValue;
         private boolean mAllowInitializerStatements;
 
         private VariableRef mContextParam;
         private VariableRef mSubParam;
+        private VariableRef mOuterParam;
 
-        private VariableRef mBlockId;
-        private VariableRef mReturnValue;
-
+        // private LocalVariable mTempObject;
         private LocalVariable mStartTime;
 
         // A stack of branch locations and block finalizer statements. The
@@ -648,10 +766,6 @@ public class JavaClassGenerator extends CodeGenerator {
         // generator walks this stack until it finds a branch location. Along
         // the way, it generates any finalizer statements.
         private List<Object> mBreakInfoStack;
-
-        // Is used when generating the substitution format to gather up
-        // switch cases.
-        private List<Node> mCaseNodes;
 
         // Exception guard handlers that need to be generated at the end.
         private List<GuardHandler> mExceptionGuardHandlers;
@@ -693,6 +807,14 @@ public class JavaClassGenerator extends CodeGenerator {
         }
 
         /**
+         * Calling this ensures that a void value is not returned but rather
+         * a null constant is returned.
+         */
+        public void requireReturnValue() {
+            mRequireReturnValue = true;
+        }
+        
+        /**
          * Invoked to generate static execute method for template with no
          * internal substitution blocks. Also use to generate static
          * initializer statements.
@@ -706,126 +828,76 @@ public class JavaClassGenerator extends CodeGenerator {
         /**
          * Invoked to generate Substitution.substitute(Context) method.
          */
-        public String[] generateSubFormat(CodeBuilder builder, Template node) {
+        public void generateSubFormat(CodeBuilder builder, Node node) {
             mBuilder = builder;
 
             // Acquire input parameter for use as context.
-            final LocalVariable param = builder.getParameters()[0];
-            Variable contextVar = mContextParam.getVariable();
-            Variable newLocalContext =
-                new Variable(null, contextVar.getName(), contextVar.getType());
-            declareVariable(newLocalContext, param);
+            if (mContextParam != null) {
+                final LocalVariable param = builder.getParameters()[0];
+                Variable contextVar = mContextParam.getVariable();
+                Variable newLocalContext =
+                    new Variable(null, contextVar.getName(), contextVar.getType());
+                declareVariable(newLocalContext, param);
 
-            // Cast local context parameter to ensure its the right type.
-            mBuilder.loadLocal(param);
-            mBuilder.checkCast(makeDesc(contextVar));
-            mBuilder.storeLocal(param);
+                // Cast local context parameter to ensure its the right type.
+                mBuilder.loadLocal(param);
+                mBuilder.checkCast(makeDesc(contextVar));
+                mBuilder.storeLocal(param);
 
-            // Store context in field in case a substitution is exported from
-            // this template.
-            storeToVariable(contextVar, new Runnable() {
-                public void run() {
-                    mBuilder.loadLocal(param);
-                }
-            });
-            contextVar.setField(false);
-
-            // Create ReturnValue field if template returns a value.
-            Type returnType = node.getReturnType();
-            if (!(Type.VOID_TYPE.equals(returnType))) {
-                Variable returnValue =
-                    new Variable(null, "returnValue", returnType);
-                returnValue.setField(true);
-                declareVariable(returnValue);
-
-                mReturnValue = new VariableRef(null, returnValue.getName());
-                mReturnValue.setVariable(returnValue);
+                // Store context in field in case a substitution is exported from
+                // this template.
+                storeToVariable(contextVar, new Runnable() {
+                    public void run() {
+                        mBuilder.loadLocal(param);
+                    }
+                });
+                contextVar.setField(false);
             }
 
-            // Create blockId field.
-            Type blockIdType = Type.INT_TYPE;
-            Variable blockId = new Variable(null, "blockId", blockIdType);
-            blockId.setField(true);
-            declareVariable(blockId);
+            // TODO: profiling?
+            /*
+            boolean profilingEnabled = isProfilingEnabled();
+            
+            // Inject pre-call profiling bytecode.
+            TypeDesc methodObserverType =
+                TypeDesc.forClass(MergedClass.InvocationEventObserver.class);
 
-            mBlockId = new VariableRef(null, blockId.getName());
-            mBlockId.setVariable(blockId);
-
-            // switch (blockId) {...
-            mBuilder.loadThis();
-            mBuilder.loadField(blockId.getName(), TypeDesc.INT);
-
-            // Create case labels.
-            int[] cases = new int[mSubBlockCount + 1];
-            Label[] switchLabels = new Label[mSubBlockCount + 1];
-            mCaseNodes = new ArrayList<Node>(mSubBlockCount + 1);
-
-            for (int i=0; i <= mSubBlockCount; i++) {
-                cases[i] = i;
-                switchLabels[i] = mBuilder.createLabel();
+            LocalVariable startTime = mBuilder.createLocalVariable("blockTime",
+                TypeDesc.forClass(long.class));
+            if (profilingEnabled) {
+                mBuilder.invokeStatic(mContextParam.getVariable().getType().getObjectClass().getName(),
+                    "getInvocationObserver", methodObserverType, null);
+                mBuilder.invokeInterface(methodObserverType.getFullName(), "currentTime",
+                   TypeDesc.forClass(long.class), null);
+                mBuilder.storeLocal(startTime);
             }
-
-            Label defaultLabel = mBuilder.createLabel();
-
-            mBuilder.switchBranch(cases, switchLabels, defaultLabel);
-
-            int size = 0;
-            int newSize;
-            mCaseNodes.add(node);
-            while ( (newSize = mCaseNodes.size()) > size) {
-                for (; size < newSize; size++) {
-                    if (size > 0) {
-                        mBuilder.returnVoid();
-                    }
-                    switchLabels[size].setLocation();
-
-                    // Inject pre-call profiling bytecode.
-                    TypeDesc methodObserverType =
-                        TypeDesc.forClass(MergedClass.InvocationEventObserver.class);
-
-                    boolean profilingEnabled = isProfilingEnabled();
-
-                    LocalVariable startTime = mBuilder.createLocalVariable("blockTime",
-                        TypeDesc.forClass(long.class));
-                    if (profilingEnabled && size > 0) {
-                        mBuilder.invokeStatic(mContextParam.getVariable().getType().getObjectClass().getName(),
-                            "getInvocationObserver", methodObserverType);
-                        mBuilder.invokeInterface(methodObserverType.getFullName(), "currentTime",
-                           TypeDesc.forClass(long.class));
-                        mBuilder.storeLocal(startTime);
-                    }
-
-                    generate((Node)mCaseNodes.get(size));
-
-                    // Inject post-call profiling bytecode.
-                    if (profilingEnabled && size > 0) {
-                        mBuilder.invokeStatic(mContextParam.getVariable().getType().getObjectClass().getName(),
-                            "getInvocationObserver", methodObserverType);
-                        mBuilder.loadConstant(mUnit.getName());
-                        mBuilder.loadConstant((String) mCallerToSubNoList.get(size - 1));
-                        mBuilder.invokeStatic(mContextParam.getVariable().getType().getObjectClass().getName(),
-                            "getInvocationObserver", methodObserverType);
-                        mBuilder.invokeInterface(methodObserverType.getFullName(), "currentTime",
-                            TypeDesc.forClass(long.class));
-                        mBuilder.loadLocal(startTime);
-                        mBuilder.math(Opcode.LSUB);
-                        mBuilder.invokeInterface(methodObserverType.getFullName(), "invokedEvent", null,
-                            new TypeDesc[] { TypeDesc.forClass(String.class), TypeDesc.forClass(String.class),
-                                TypeDesc.forClass(long.class) });
-                    }
-
-                }
+            */
+    
+            // generate node
+            generate(node); 
+            
+            // Inject post-call profiling bytecode.
+            // TODO: won't the above return thus bypassing this since
+            // we now inject ReturnStatements into call blocks?
+            /*
+            if (profilingEnabled) {
+                mBuilder.invokeStatic(mContextParam.getVariable().getType().getObjectClass().getName(),
+                    "getInvocationObserver", methodObserverType, null);
+                mBuilder.loadConstant(mUnit.getName());
+                mBuilder.loadConstant((String) mCallerToSubNoList.get(size - 1));
+                mBuilder.invokeStatic(mContextParam.getVariable().getType().getObjectClass().getName(),
+                    "getInvocationObserver", methodObserverType, null);
+                mBuilder.invokeInterface(methodObserverType.getFullName(), "currentTime",
+                    TypeDesc.forClass(long.class), null);
+                mBuilder.loadLocal(startTime);
+                mBuilder.math(Opcode.LSUB);
+                mBuilder.invokeInterface(methodObserverType.getFullName(), "invokedEvent", null,
+                    new TypeDesc[] { TypeDesc.forClass(String.class), TypeDesc.forClass(String.class),
+                        TypeDesc.forClass(long.class) });
             }
-
-            defaultLabel.setLocation();
-            mBuilder.returnVoid();
+            */
 
             generateExceptionHandlers();
-
-            return new String[] {
-                mBlockId.getName(),
-                (mReturnValue != null) ? mReturnValue.getName() : null
-            };
         }
 
         /**
@@ -842,6 +914,12 @@ public class JavaClassGenerator extends CodeGenerator {
         }
 
         private void generate(Node node) {
+            generate(node, mBuilder);
+        }
+        
+        private void generate(Node node, CodeBuilder builder) {
+            CodeBuilder prevBuilder = mBuilder;
+            mBuilder = builder;
             try {
                 setLineNumber(node.getSourceInfo());
                 if (!(node instanceof Expression)) {
@@ -873,6 +951,9 @@ public class JavaClassGenerator extends CodeGenerator {
             }
             catch (RuntimeException e) {
                 throw new DetailException(e, "(near line " + mLastLine + ')');
+            }
+            finally {
+                mBuilder = prevBuilder;
             }
         }
 
@@ -1012,6 +1093,53 @@ public class JavaClassGenerator extends CodeGenerator {
                 mBreakInfoStack.remove(mBreakInfoStack.size() - 1);
             }
 
+            return null;
+        }
+
+        public Object visit(LambdaExpression node) {
+            generateSubstitution(node);
+            return null;
+        }
+        
+        public Object visit(LambdaBlock node) {
+            generateSubstitution(node);
+            return null;
+        }
+        
+        public Object visit(LambdaStatement node) {
+            VariableRef[] vars = node.getVariables();
+            for (int i = 0; i < vars.length; i++) {
+                Variable var =
+                    new Variable(vars[i].getSourceInfo(), vars[i].getName(),
+                                 vars[i].getType());
+
+                // load Object[] variable on param 0
+                Type type = vars[i].getType();
+                Type otype = type.toNonPrimitive();
+                
+                if (vars[i].getType().isPrimitive()) {
+                    typeConvertBegin(Type.OBJECT_TYPE, otype, true);
+                    typeConvertBegin(otype, type, true);
+                }
+                else {
+                    typeConvertBegin(Type.OBJECT_TYPE, type, true);
+                }
+                mBuilder.loadLocal(mBuilder.getParameters()[1]);
+                mBuilder.loadConstant(i);
+                mBuilder.loadFromArray(TypeDesc.OBJECT);
+                if (vars[i].getType().isPrimitive()) {
+                    typeConvertEnd(Type.OBJECT_TYPE, otype, true);
+                    typeConvertEnd(otype, type, true);
+                }
+                else {
+                    typeConvertEnd(Type.OBJECT_TYPE, type, true);
+                }
+
+                declareVariable(var, null);
+                mBuilder.storeLocal(getLocalVariable(var));
+            }
+
+            visit(node.getBlock());
             return null;
         }
 
@@ -1162,63 +1290,6 @@ public class JavaClassGenerator extends CodeGenerator {
             return null;
         }
 
-        public Object visit(SubstitutionStatement node) {
-
-            // Inject pre-call profiling bytecode.
-            TypeDesc methodObserverType =
-                TypeDesc.forClass(MergedClass.InvocationEventObserver.class);
-
-            boolean profilingEnabled = isProfilingEnabled();
-
-            if (profilingEnabled) {
-                if (mSubTime == null)
-                    mSubTime = mBuilder.createLocalVariable("subTime",
-                        TypeDesc.forClass(long.class));
-                mBuilder.invokeStatic(mContextParam.getVariable().getType().getObjectClass().getName(),
-                    "getInvocationObserver", methodObserverType);
-                mBuilder.invokeInterface(methodObserverType.getFullName(), "currentTime",
-                   TypeDesc.forClass(long.class));
-                mBuilder.storeLocal(mSubTime);
-            }
-
-
-            Class<?> subClass = Substitution.class;
-            Method subMethod;
-            try {
-                // Always pass context into substitution in order for this
-                // template's own substitutions to be safely detached.
-                subMethod = subClass.getMethod
-                    ("substitute", new Class[]{Context.class});
-            }
-            catch (NoSuchMethodException e) {
-                throw new RuntimeException(e.toString());
-            }
-
-            generate(mSubParam);
-            generateContext();
-            mBuilder.invoke(subMethod);
-
-
-            // Inject post-call profiling bytecode.
-            if (profilingEnabled) {
-                mBuilder.invokeStatic(mContextParam.getVariable().getType().getObjectClass().getName(),
-                    "getInvocationObserver", methodObserverType);
-                mBuilder.loadConstant(mUnit.getName());
-                mBuilder.loadConstant("__substitution");
-                mBuilder.invokeStatic(mContextParam.getVariable().getType().getObjectClass().getName(),
-                    "getInvocationObserver", methodObserverType);
-                mBuilder.invokeInterface(methodObserverType.getFullName(), "currentTime",
-                    TypeDesc.forClass(long.class));
-                mBuilder.loadLocal(mSubTime);
-                mBuilder.math(Opcode.LSUB);
-                mBuilder.invokeInterface(methodObserverType.getFullName(), "invokedEvent", null,
-                    new TypeDesc[] { TypeDesc.forClass(String.class), TypeDesc.forClass(String.class),
-                        TypeDesc.forClass(long.class) });
-            }
-
-            return null;
-        }
-
         public Object visit(ExpressionStatement node) {
             Method receiver = node.getReceiverMethod();
 
@@ -1251,33 +1322,28 @@ public class JavaClassGenerator extends CodeGenerator {
 
             boolean profilingEnabled = isProfilingEnabled();
 
-            // If generating sub-format...
-            if (mCaseNodes != null) {
-                if (expr != null) {
-                    Type type = expr.getType();
-                    if (!(Type.VOID_TYPE.equals(type))) {
-                        // Generating sub-format and returning non-void, so
-                        // store result in a field for later retrieval.
-                        mBuilder.loadThis();
-                        generate(node.getExpression());
-                        TypeDesc td = makeDesc(mReturnValue.getType());
-                        mBuilder.storeField(mReturnValue.getName(), td);
+            if (expr != null) {
+                Type type = expr.getType();
+                generate(expr);
+                if (type.isVoid()) { 
+                    if (mRequireReturnValue) {
+                        mBuilder.loadNull();
+                        mBuilder.returnValue(makeDesc(Object.class));
                     }
-                    else {
-                        generate(node.getExpression());
-                    }
+                    else { mBuilder.returnVoid(); }
                 }
-            }
-            else if (expr != null) {
-                generate(node.getExpression());
-                if (profilingEnabled)
-                    generateGlobalProfilingEnd();
-                mBuilder.returnValue(makeDesc(expr.getType()));
+                else { mBuilder.returnValue(makeDesc(type)); }
             }
             else {
-                if (profilingEnabled)
+                if (profilingEnabled) {
                     generateGlobalProfilingEnd();
-                mBuilder.returnVoid();
+                }
+                
+                if (mRequireReturnValue) {
+                    mBuilder.loadNull();
+                    mBuilder.returnValue(makeDesc(Object.class));
+                }
+                else { mBuilder.returnVoid(); }
             }
 
             return null;
@@ -1338,6 +1404,122 @@ public class JavaClassGenerator extends CodeGenerator {
 
         public Object visit(ParenExpression node) {
             generate(node.getExpression());
+            return null;
+        }
+
+        public Object visit(NewClassExpression node) {
+            ExpressionList list = node.getExpressionList();
+            Expression[] exprs = list.getExpressions();
+            CompilationUnit unit = node.getCalledTemplate();
+
+            String className = null;
+            if (!node.isAnonymous()) {
+                className = unit.getTargetPackage();
+                if (className == null) {
+                    className = unit.getName();
+                }
+                else {
+                    className = className + '.' + unit.getName();
+                }
+            }
+
+            if (node.isAnonymous()) {
+                className = node.getType().getClassName();
+                String innerName =
+                    className.substring(className.lastIndexOf('$') + 1);
+
+                ClassFile innerClass = enterInnerClass(innerName);
+                innerClass.getModifiers().setPublic(true);
+                innerClass.getModifiers().setStatic(true);
+
+                SourceInfo source = node.getSourceInfo();
+                Variable[] vars = new Variable[exprs.length / 2];
+                for (int i = 0; i < exprs.length; i += 2) {
+                    StringLiteral name = (StringLiteral) exprs[i];
+                    Expression expr = exprs[i + 1];
+
+                    vars[i / 2] = new Variable(source, (String) name.getValue(),
+                                               expr.getType());
+                }
+
+                TemplateClass tc = new TemplateClass
+                (
+                    source, new Name(source, innerName), vars, null, null
+                );
+
+                generateTemplateClass(tc, innerName, innerClass);
+                exitClass();
+            }
+
+            if (mAllowInitializerStatements && node.isAllConstant()) {
+                SourceInfo info = node.getSourceInfo();
+
+                // Create a variable...
+                Variable var = new Variable(info, "inner",
+                                            new TypeName(info, className));
+                var.setStatic(true);
+                generate(var);
+
+                // Create an assignment statement...
+                VariableRef ref = new VariableRef(info, "inner");
+                ref.setVariable(var);
+
+                // Clone the expression so that the type can be
+                // changed back to the underlying array type. This prevents
+                // unecessary casting in the assignment statement.
+                Expression clonedNode = (Expression)node.clone();
+                clonedNode.setType(Type.OBJECT_TYPE);
+
+                AssignmentStatement assn =
+                    new AssignmentStatement(info, ref, clonedNode);
+
+                // Move this statement into the static initializer
+                mInitializerStatements.add(assn);
+
+                // Substitute a field access for a NewArrayExpression
+                TypeDesc td = makeDesc(className);
+                mBuilder.loadStaticField(var.getName(), td);
+            }
+            else if (node.isAssociative()) {
+                mBuilder.newObject(makeDesc(className));
+
+                mBuilder.dup();
+                mBuilder.invokeConstructor(className, new TypeDesc[0]);
+
+                for (int i = 0; i < exprs.length - 1; i += 2) {
+                    Expression param = exprs[i];
+                    Expression value = exprs[i + 1];
+
+                    String name = null;
+                    if (param instanceof StringLiteral) {
+                        name = (String) ((StringLiteral) param).getValue();
+                    }
+
+                    String type = value.getType().getClassName();
+                    String setter =
+                        "set" + Character.toUpperCase(name.charAt(0)) + name.substring(1);
+
+                    mBuilder.dup();
+                    generate(value);
+                    mBuilder.invokeVirtual(className, setter, TypeDesc.VOID,
+                                           new TypeDesc[] { makeDesc(type) });
+                }
+            }
+            else {
+                mBuilder.newObject(makeDesc(className));
+                mBuilder.dup();
+
+                Variable[] params = unit.getParseTree().getParams();
+                TypeDesc[] types = new TypeDesc[exprs.length];
+                for (int i = 0; i < exprs.length; i++) {
+                    types[i] = makeDesc(params[i]);
+                    generate(exprs[i]);
+                    // mBuilder.checkCast(types[i]);
+                }
+
+                mBuilder.invokeConstructor(className, types);
+            }
+
             return null;
         }
 
@@ -1501,6 +1683,143 @@ public class JavaClassGenerator extends CodeGenerator {
             return null;
         }
 
+        public Object visit(Lookup node) {
+            Expression expr = node.getExpression();
+            String lookupName = node.getLookupName().getName();
+            Method readMethod = node.getReadMethod();
+
+            generate(expr);
+            setLineNumber(node.getDot().getSourceInfo());
+            
+            Type type = null;
+            Label elseLocation = null;
+            Label endLocation = null;
+            if (node.isNullSafe() && expr.getType().isNullable()) { // TODO: backport 4.2 generateNullSafe context here
+                endLocation = mBuilder.createLabel();
+                elseLocation = mBuilder.createLabel();
+                
+                mBuilder.dup();
+                mBuilder.ifNullBranch(elseLocation, true);
+            }
+
+            if (readMethod == null && expr.getType() instanceof DynamicType) {
+                String className = expr.getType().getClassName();
+                DynamicType dynamic = (DynamicType) expr.getType();
+                Type retType = dynamic.getParameterType(lookupName);
+
+                String methodName =
+                    "get" + Character.toUpperCase(lookupName.charAt(0)) + lookupName.substring(1);
+
+                type = retType;
+                mBuilder.invokeVirtual(className, methodName,
+                                       makeDesc(retType), new TypeDesc[0]);
+            }
+            else if (expr.getType().getObjectClass().isArray() &&
+                lookupName.equals("length")) {
+
+                type = Type.INT_TYPE;
+                mBuilder.arrayLength();
+            }
+            else {
+                if (Modifier.isStatic(readMethod.getModifiers())) {
+                    // Discard the object to call method on.
+                    mBuilder.pop();
+                }
+
+                type = new Type(readMethod.getReturnType(), 
+                                readMethod.getGenericReturnType());
+                
+                mBuilder.invoke(readMethod);
+            }
+
+            setLineNumber(node.getLookupName().getSourceInfo());
+            if (node.isNullSafe() && expr.getType().isNullable()) {
+                // if type is primitive, convert
+                if (type != null && type.isPrimitive()) {
+                    typeConvertEnd(type, type.toNonPrimitive(), true);
+                }
+
+                mBuilder.branch(endLocation);
+                elseLocation.setLocation();
+                mBuilder.checkCast(makeDesc(node.getType()));
+                endLocation.setLocation();
+            }
+            
+            return null;
+        }
+
+        public Object visit(ArrayLookup node) {
+            Expression expr = node.getExpression();
+            Expression lookup = node.getLookupIndex();
+            Method readMethod = node.getReadMethod();
+
+            Type type = expr.getType();
+            boolean doArrayLookup;
+            Class<?> lookupClass = type.getObjectClass();
+
+            if (lookupClass.isArray()) {
+                doArrayLookup = true;
+            }
+            else {
+                doArrayLookup = false;
+            }
+
+            generate(expr);
+
+            Type rtype = null;
+            Label elseLocation = null;
+            Label endLocation = null;
+            if (node.isNullSafe() && expr.getType().isNullable()) { // TODO: backport 4.2 nullSafe check to here
+                endLocation = mBuilder.createLabel();
+                elseLocation = mBuilder.createLabel();
+                
+                mBuilder.dup();
+                mBuilder.ifNullBranch(elseLocation, true);
+            }
+
+            if (!doArrayLookup &&
+                Modifier.isStatic(readMethod.getModifiers())) {
+
+                // Discard the object to call method on.
+                mBuilder.pop();
+            }
+
+            generate(lookup);
+
+            setLineNumber(node.getLookupToken().getSourceInfo());
+
+            if (!doArrayLookup) {
+                rtype = node.getType();
+                mBuilder.invoke(readMethod);
+                mBuilder.checkCast(makeDesc(node.getType()));
+            }
+            else {
+                Type elementType;
+                try {
+                    elementType = expr.getInitialType().getArrayElementType();
+                }
+                catch (IntrospectionException e) {
+                    throw new RuntimeException(e.toString());
+                }
+
+                rtype = elementType;
+                mBuilder.loadFromArray(makeDesc(elementType));
+            }
+            
+            if (node.isNullSafe() && expr.getType().isNullable()) {
+                // if type is primitive, convert
+                if (rtype != null && rtype.isPrimitive()) {
+                    typeConvertEnd(rtype, rtype.toNonPrimitive(), true);
+                }
+
+                mBuilder.branch(endLocation);
+                elseLocation.setLocation();
+                mBuilder.checkCast(makeDesc(node.getType()));
+                endLocation.setLocation();
+            }
+
+            return null;
+        }
         public Object visit(final Lookup node) {
             // generate expression
             final Expression expr = node.getExpression();
@@ -1821,6 +2140,89 @@ public class JavaClassGenerator extends CodeGenerator {
 
             endLabel.setLocation();
 
+            return null;
+        }
+
+        // Code generation methods for literals.
+
+        public Object visit(SubstitutionExpression node) {
+
+            // TODO: handle profiling w/ return values from expressions
+            /*
+
+            // Inject pre-call profiling bytecode.
+            TypeDesc methodObserverType =
+                TypeDesc.forClass(MergedClass.InvocationEventObserver.class);
+
+            boolean profilingEnabled = isProfilingEnabled();
+        
+            if (profilingEnabled) {
+                if (mSubTime == null)
+                    mSubTime = mBuilder.createLocalVariable("subTime",
+                        TypeDesc.forClass(long.class));
+                mBuilder.invokeStatic(mContextParam.getVariable().getType().getObjectClass().getName(),
+                    "getInvocationObserver", methodObserverType, null);
+                mBuilder.invokeInterface(methodObserverType.getFullName(), "currentTime",
+                   TypeDesc.forClass(long.class), null);
+                mBuilder.storeLocal(mSubTime);
+            }
+            */
+        
+            Class<Substitution> subClass = Substitution.class;
+            Method subMethod, subMethodParams;
+            try {
+                // Always pass context into substitution in order for this
+                // template's own substitutions to be safely detached.
+                subMethod = subClass.getMethod
+                    ("rsubstitute", new Class[]{Context.class});
+                subMethodParams = subClass.getMethod
+                    ("rsubstitute", new Class[]{Context.class, Object[].class});
+            }
+            catch (NoSuchMethodException e) {
+                throw new RuntimeException(e.toString());
+            }
+        
+            // get params
+            ExpressionList params = node.getParams();
+        
+            generate(mSubParam);
+            generateContext();
+            if (params == null) {
+                mBuilder.invoke(subMethod);
+            }
+            else {
+                Expression[] exprs = params.getExpressions();
+                mBuilder.loadConstant(exprs.length);
+                mBuilder.newObject(TypeDesc.OBJECT.toArrayType(), 1);
+                for (int i = 0; i < exprs.length; i++) {
+                    mBuilder.dup();
+                    mBuilder.loadConstant(i);
+                    generate(exprs[i]);
+                    mBuilder.storeToArray(TypeDesc.OBJECT);
+                }
+                
+                mBuilder.invoke(subMethodParams);
+            }
+            
+            // Inject post-call profiling bytecode.
+            /* TODO: need to store result to local variable and then handle
+            if (profilingEnabled) {
+                mBuilder.invokeStatic(mContextParam.getVariable().getType().getObjectClass().getName(),
+                    "getInvocationObserver", methodObserverType, null);
+                mBuilder.loadConstant(mUnit.getName());
+                mBuilder.loadConstant("__substitution");
+                mBuilder.invokeStatic(mContextParam.getVariable().getType().getObjectClass().getName(),
+                    "getInvocationObserver", methodObserverType, null);
+                mBuilder.invokeInterface(methodObserverType.getFullName(), "currentTime",
+                    TypeDesc.forClass(long.class), null);
+                mBuilder.loadLocal(mSubTime);
+                mBuilder.math(Opcode.LSUB);
+                mBuilder.invokeInterface(methodObserverType.getFullName(), "invokedEvent", null,
+                    new TypeDesc[] { TypeDesc.forClass(String.class), TypeDesc.forClass(String.class),
+                        TypeDesc.forClass(long.class) });
+            }
+            */
+        
             return null;
         }
 
@@ -2273,6 +2675,12 @@ public class JavaClassGenerator extends CodeGenerator {
             }
         }
 
+        private void generateOuterClass() {
+            // mBuilder.loadThis();
+            generate(mOuterParam);
+            // mBuilder.loadField(mOuterParam.getName(), mOuterClass.getType());
+        }
+        
         private void generateBranch(Expression expr,
                                     Label label, boolean whenTrue) {
             if (expr instanceof Logical) {
@@ -3714,11 +4122,13 @@ public class JavaClassGenerator extends CodeGenerator {
             NullSafeCallback callback = new NullSafeCallback() {
                 public Type execute() {
                     Statement init = node.getInitializer();
+            LambdaExpression subParam = node.getSubstitutionParam(); // TODO: address this
                     Statement subParam = node.getSubstitutionParam();
                     Expression[] exprs = node.getParams().getExpressions();
 
                     int blockNum;
                     if (subParam != null) {
+                    // TODO: is this stuff needed?
                         blockNum = mCaseNodes.size() - 1;
                         mBuilder.loadThis();
                         mBuilder.loadConstant(blockNum + 1);
@@ -3761,10 +4171,20 @@ public class JavaClassGenerator extends CodeGenerator {
         
                     if (node instanceof FunctionCallExpression) {
                         FunctionCallExpression function = 
+                Object caller = function.getCaller();
                             (FunctionCallExpression) node;
                         Method call = function.getCalledMethod();
         
-                        if (expr == null && 
+                int start = 0;
+                if (caller instanceof VariableRef) {
+                    // Push instance of caller onto stack
+                    generate((VariableRef) caller);
+                    
+                    // Push instance of context as first param
+                    start = 1;
+                    generateContext();
+                }
+                else if (expr == null && 
                             !Modifier.isStatic(call.getModifiers())) {
                             
                             // Push instance of Context onto stack.
@@ -3787,7 +4207,7 @@ public class JavaClassGenerator extends CodeGenerator {
                                         mBuilder.dup();
                                         mBuilder.loadConstant(idx);
                                         generate(exprs[j]);
-                                        mBuilder.storeToArray(desc.getComponentType());
+                                mBuilder.storeToArray(TypeDesc.OBJECT/*desc.getComponentType()*/); // TODO: why did this get commented out?
                                     }
                                     
                                     break;
@@ -3805,7 +4225,7 @@ public class JavaClassGenerator extends CodeGenerator {
         
                         if (subParam != null) {
                             // Put this onto the stack as a substitution parameter.
-                            mBuilder.loadThis();
+                    generate(subParam);
                         }
         
                         // Generate init right before the call.
@@ -3860,16 +4280,23 @@ public class JavaClassGenerator extends CodeGenerator {
                         int length = formals.length;
         
                         TypeDesc[] params;
-                        if (subParam == null) {
+                if (!tree.hasSubstitutionParam()) {
                             params = new TypeDesc[length + 1];
                         }
                         else {
                             params = new TypeDesc[length + 2];
                             params[params.length - 1] = makeDesc(Substitution.class);
-                            // Put this onto the stack as a substitution parameter.
-                            mBuilder.loadThis();
+                    
+                    // Generate substitution if directly passed in (otherwise
+                    // we assume it is the last param)
+                    if (subParam != null) {
+                        // Put this onto the stack as a substitution parameter.
+                        generateSubstitution(subParam);
+                    }
                         }
         
+                // Compiler c = mUnit.getCompiler();
+                // try and find the signature for the actual template, otherwise guess
                         params[0] = makeDesc(unit.getRuntimeContext());
         
                         for (int i=0; i<length; i++) {
@@ -3909,7 +4336,359 @@ public class JavaClassGenerator extends CodeGenerator {
         
                     if (returnTypeDesc != null && ! TypeDesc.VOID.equals(returnTypeDesc)) {
                         mBuilder.loadLocal(retVal);
+
+            if (subParam != null) {
+                //mBuilder.loadThis();
+                //mBuilder.loadConstant(blockNum);
+                //mBuilder.storeField(mBlockId.getName(), TypeDesc.INT);
                     }
+        }
+        
+        private void generateSubstitution(LambdaExpression node) {
+            // generate actual lambda class
+            LambdaBlock block = node.getBlock();
+            if (block != null) {
+                generateSubstitution(block);
+            }
+        }
+        
+        private void generateSubstitution(LambdaBlock node) {
+            // define next id
+            int subId = mSubId++;
+            
+            // determine if context required
+            ContextVisitor visitor = new ContextVisitor();
+            node.accept(visitor);
+            boolean contextRequired = visitor.isContextRequired();
+            
+            // determine if outer class required
+            boolean outerRequired = !node.hasFinalVariables();
+            
+            // determine if singleton or not
+            // singleton means no shared vars, no context, and no outer class
+            boolean singleton = !contextRequired && !outerRequired &&
+                                !node.hasSharedVariables();
+            
+            // create inner class
+            ClassFile classFile = enterInnerClass("sub$" + subId);
+            classFile.getModifiers().setPublic(true);
+            if (!outerRequired) {
+                classFile.getModifiers().setStatic(true);
+            }
+            classFile.addInterface(Substitution.class);
+            classFile.addInterface(Cloneable.class);
+            classFile.addInterface(java.io.Serializable.class);
+
+            // setup default modifiers
+            Modifiers mods = new Modifiers();
+            mods.setPublic(true);
+            
+            Modifiers pvts = new Modifiers();
+            pvts.setPrivate(true);
+            pvts.setFinal(true);
+
+            // setup types
+            TypeDesc subType = makeDesc(Substitution.class);
+            Type contextType = new Type(mUnit.getCompiler().getRuntimeContext());
+            TypeDesc contextTypeDesc = makeDesc(contextType);
+
+            // setup ctor variables
+            List<Variable> params = new ArrayList<Variable>();
+            Map<Variable, TypeDesc> ctorTypes = 
+                new LinkedHashMap<Variable, TypeDesc>();
+
+            // define outer class if shared vars
+            if (outerRequired) {
+                String outerClassName = mOuterClass.getClassName();
+                Variable outerVar = 
+                    new Variable(null, OUTER_CLASS_NAME, new Type(outerClassName));
+                outerVar.setTransient(true);
+                outerVar.setField(true);
+                params.add(outerVar);
+                ctorTypes.put(outerVar, makeDesc(outerClassName));
+            }
+            
+            // define context if required
+            if (contextRequired) {
+                Variable contextVar = 
+                    new Variable(null, CONTEXT_PARAM_NAME, contextType);
+                contextVar.setTransient(true);
+                contextVar.setField(true);
+                params.add(contextVar);
+                ctorTypes.put(contextVar, contextTypeDesc);
+            }
+            
+            Variable[] vars = node.getPromotedVariables();
+            for (Variable var : vars) {
+                if (var.isFinal()) {
+                    params.add(var);
+                    ctorTypes.put(var, makeDesc(var));
+                }
+            }
+            
+            VariableRef[] refs = node.getOutOfScopeVariables();
+            for (VariableRef ref : refs) {
+                Variable var = ref.getVariable();
+                if (var != null && var.isFinal()) {
+                    params.add(var);
+                    ctorTypes.put(var, makeDesc(var));
+                }
+            }
+            
+            // lookup methods
+            Method printMethod = 
+                getMethod(Context.class, "print", Object.class);
+            Method subMethod = 
+                getMethod(Substitution.class, "substitute");
+            Method subMethodParams = 
+                getMethod(Substitution.class, "substitute", Object[].class);
+            Method subContextMethod = 
+                getMethod(Substitution.class, "substitute", Context.class);
+            Method subContextMethodParams = 
+                getMethod(Substitution.class, "substitute", 
+                          Context.class, Object[].class);
+            Method rsubMethod = 
+                getMethod(Substitution.class, "rsubstitute");
+            Method rsubMethodParams = 
+                getMethod(Substitution.class, "rsubstitute", Object[].class);
+            Method rsubContextMethod = 
+                getMethod(Substitution.class, "rsubstitute", Context.class);
+            Method rsubContextMethodParams = 
+                getMethod(Substitution.class, "rsubstitute", 
+                          Context.class, Object[].class);
+            Method subIdMethod = 
+                getMethod(Substitution.class, "getIdentifier");
+            Method subDetachMethod = 
+                getMethod(Substitution.class, "detach");
+            Method toStringMethod = getMethod(Object.class, "toString");
+            
+            // Setup Types
+            TypeDesc subIdType = makeDesc(SubstitutionId.class);
+
+            // Setup Visitor
+            MethodInfo mi = null;
+            CodeBuilder builder = null;
+            Variable[] allvars = params.toArray(new Variable[params.size()]);
+            Visitor gen = new Visitor(allvars);
+            gen.requireReturnValue();
+
+            // Generate Substitution.substitute().
+            mi = classFile.addMethod(subMethod);
+            builder = new CodeBuilder(mi);
+            builder.loadThis();
+            if (contextRequired) { gen.generateContext(builder); }
+            else { builder.loadNull(); }
+            builder.invoke(subContextMethod);
+            builder.returnVoid();
+
+            // Generate Substitution.substitute(Object...).
+            mi = classFile.addMethod(subMethodParams);
+            builder = new CodeBuilder(mi);
+            builder.loadThis();
+            if (contextRequired) { gen.generateContext(builder); }
+            else { builder.loadNull(); }
+            builder.loadLocal(builder.getParameters()[0]);
+            builder.invoke(subContextMethodParams);
+            builder.returnVoid();
+
+            // Generate Substitution.substitute(Context).
+            mi = classFile.addMethod(subContextMethod);
+            builder = new CodeBuilder(mi);
+            builder.loadThis();
+            builder.loadLocal(builder.getParameters()[0]);
+            // TODO: should we pass in empty array or null?
+            builder.loadConstant(0);
+            builder.newObject(makeDesc(Object[].class), 1);
+            builder.invoke(subContextMethodParams);
+            builder.returnVoid();
+
+            // Generate Substitution.substitute(Context, Object...).
+            mi = classFile.addMethod(subContextMethodParams);
+            builder = new CodeBuilder(mi);
+            builder.loadLocal(builder.getParameters()[0]);
+            builder.loadThis();
+            builder.loadLocal(builder.getParameters()[0]);
+            builder.loadLocal(builder.getParameters()[1]);
+            builder.invoke(rsubContextMethodParams);
+            builder.invoke(printMethod);
+            builder.returnVoid();
+
+            // Generate Substitution.rsubstitute().
+            mi = classFile.addMethod(rsubMethod);
+            builder = new CodeBuilder(mi);
+            builder.loadThis();
+            if (contextRequired) { gen.generateContext(builder); }
+            else { builder.loadNull(); }
+            builder.invoke(rsubContextMethod);
+            builder.returnValue(TypeDesc.OBJECT);
+            
+            // Generate Substitution.rsubstitute(Object...).
+            mi = classFile.addMethod(rsubMethodParams);
+            builder = new CodeBuilder(mi);
+            builder.loadThis();
+            if (contextRequired) { gen.generateContext(builder); }
+            else { builder.loadNull(); }
+            builder.loadLocal(builder.getParameters()[0]);
+            builder.invoke(rsubContextMethodParams);
+            builder.returnValue(TypeDesc.OBJECT);
+            
+            // Generate Substitution.rsubstitute(Context).
+            mi = classFile.addMethod(rsubContextMethod);
+            builder = new CodeBuilder(mi);
+            builder.loadThis();
+            builder.loadLocal(builder.getParameters()[0]);
+            // TODO: pass in empty array or null?
+            builder.loadConstant(0);
+            builder.newObject(makeDesc(Object[].class), 1);
+            builder.invoke(rsubContextMethodParams);
+            builder.returnValue(TypeDesc.OBJECT);
+            
+            // Generate Substitution.rsubstitute(Context, Object...).
+            mi = classFile.addMethod(rsubContextMethodParams);
+            builder = new CodeBuilder(mi);
+            
+            gen.generateSubFormat(builder, node);
+            
+            // TODO: profiling
+
+            // Generate getIdentifier method.
+            mi = classFile.addMethod(subIdMethod);
+            builder = new CodeBuilder(mi);
+            builder.newObject(subIdType);
+            builder.dup();
+            builder.loadThis();
+            builder.loadConstant(subId);
+            builder.invokeConstructor
+            (
+                subIdType.getRootName(), TypeDesc.OBJECT, TypeDesc.INT
+            );
+            builder.returnValue(subIdType);
+
+            // Generate detach method
+            mi = classFile.addMethod(subDetachMethod);
+            builder = new CodeBuilder(mi);
+            builder.loadThis();
+            builder.invokeVirtual("clone", TypeDesc.OBJECT);
+            builder.checkCast(classFile.getType());
+            LocalVariable sub = builder.createLocalVariable(null, subType);
+            builder.storeLocal(sub);
+            builder.loadLocal(sub);
+            builder.loadNull();
+            builder.storeField(mContextParam.getName(), contextTypeDesc);
+            // TODO: detach template sub param?
+            builder.loadLocal(sub);
+            builder.returnValue(TypeDesc.OBJECT);
+
+            // Generate toString method
+            mi = classFile.addMethod(toStringMethod);
+            builder = new CodeBuilder(mi);
+            builder.loadThis();
+            builder.invoke(rsubMethod);
+            builder.dup();
+            Label label = builder.createLabel();
+            builder.ifNullBranch(label, true);
+            builder.invoke(toStringMethod);
+            label.setLocation();
+            builder.checkCast(TypeDesc.STRING);
+            builder.returnValue(TypeDesc.STRING);
+            
+            // add ctor
+            TypeDesc[] types = ctorTypes.values().toArray(new TypeDesc[ctorTypes.size()]);
+            mi = classFile.addConstructor(mods, types);
+            builder = new CodeBuilder(mi);
+            builder.loadThis();
+            builder.invokeSuperConstructor();
+            
+            int idx = 0;
+            for (Map.Entry<Variable, TypeDesc> entry : ctorTypes.entrySet()) {
+                builder.loadThis();
+                builder.loadLocal(builder.getParameters()[idx++]);
+                builder.storeField(entry.getKey().getName(), entry.getValue());
+            }
+            
+            builder.returnVoid();
+
+            // add fields
+            Iterator<Variable> it = mFields.values().iterator();
+            Modifiers flags = new Modifiers();
+            flags.setPrivate(true);
+            while (it.hasNext()) {
+                Variable v = (Variable)it.next();
+                flags.setStatic(v.isStatic());
+                flags.setTransient(v.isTransient());
+                TypeDesc td = makeDesc(v);
+                classFile.addField(flags, v.getName(), td).markSynthetic();
+            }
+
+            // complete class
+            exitClass();
+            
+            // TODO: separate this logic into SubExpr and SubBlock
+            // How would this work since we rely on values within this block
+            // such as singleton, contextRequired, etc...we could create a
+            // helper class to store it and return that I guess...ie
+            // return new LambdaInfo(classFile, subId, ...)
+            
+            // if singleton, just create static instance
+            if (singleton) {
+                final String name = "sub$" + subId;
+                Modifiers submods = new Modifiers();
+                submods.setPrivate(true);
+                submods.setStatic(true);
+                submods.setFinal(true);
+                mClassFile.addField(submods, name, classFile.getType());
+                
+                final String className = classFile.getClassName();
+                final TypeDesc classType = classFile.getType();
+                mInitializerStatements.add(new Initializer() {
+                    @Override
+                    public void generate(ClassFile classFile,
+                                         CodeBuilder builder) {
+                        builder.newObject(classType);
+                        builder.dup();
+                        builder.invokeConstructor(className);
+                        builder.storeStaticField(name, classType);
+                    }
+                });
+                
+                mBuilder.loadStaticField(name, classFile.getType());
+            }
+            
+            // otherwise, create new instance on demand
+            else {
+                // generate instance
+                mBuilder.newObject(classFile.getType());
+                mBuilder.dup();
+                
+                // pass in outer class if shared
+                if (outerRequired) {
+                    mBuilder.loadThis();
+                }
+                
+                // pass in context to ctor if required
+                if (contextRequired) {
+                    generateContext();
+                }
+                
+                // pass in each promoted final variable
+                for (Variable var : node.getPromotedVariables()) {
+                    if (var.isFinal()) {
+                        loadFromVariable(var.getDelegate());
+                    }
+                }
+                
+                // pass in each out of scope final variable
+                for (VariableRef ref : node.getOutOfScopeVariables()) {
+                    Variable var = ref.getVariable();
+                    if (var != null && var.isFinal()) {
+                        loadFromVariable(var.getDelegate());
+                    }
+                }
+                
+                // invoke ctor
+                mBuilder.invokeConstructor(classFile.getConstructors()[0]);
+            }
+        }
 
                     if (subParam != null) {
                         mBuilder.loadThis();
@@ -4084,6 +4863,10 @@ public class JavaClassGenerator extends CodeGenerator {
                 mSubParam = new VariableRef(null, name);
                 mSubParam.setVariable(var);
             }
+            else if (name == OUTER_CLASS_NAME) {
+                mOuterParam = new VariableRef(null, name);
+                mOuterParam.setVariable(var);
+            }
 
             if (var.isField()) {
                 if (mFields.get(name) != var) {
@@ -4121,7 +4904,15 @@ public class JavaClassGenerator extends CodeGenerator {
         }
 
         private void loadFromVariable(Variable var) {
-            if (var.isField()) {
+            // non-final vars are shared and loaded from outer class                
+            if (!var.isFinal() && var.isDelegate()) {
+                generateOuterClass();
+                TypeDesc td = makeDesc(var);
+                mBuilder.loadField(mOuterClass.getClassName(), var.getDelegate().getName(), td);
+            }
+
+            // otherwise, load from field
+            else if (var.isField()) {                 
                 if (!mVariableMap.containsKey(var)) {
                     declareVariable(var, null);
                 }
@@ -4148,23 +4939,36 @@ public class JavaClassGenerator extends CodeGenerator {
         }
 
         private void storeToVariable(Variable var, Runnable callback) {
-            if (var.isField() && !var.isStatic()) {
+            String name = var.getName();
+            
+            // non-final vars are shared and loaded from outer class
+            if (!var.isFinal() && var.isDelegate()) {
+                generateOuterClass();
+                name = var.getDelegate().getName();
+            }
+
+            // otherwise, load from field if necessary
+            else if (var.isField() && !var.isStatic()) {
                 mBuilder.loadThis();
             }
 
             callback.run();
 
-            if (var.isField()) {
+            if (!var.isFinal() && var.isDelegate()) {
+                TypeDesc td = makeDesc(var);
+                mBuilder.storeField(mOuterClass.getClassName(), var.getDelegate().getName(), td);
+            }
+            else if (var.isField()) {
                 if (!mVariableMap.containsKey(var)) {
                     declareVariable(var, null);
                 }
 
                 TypeDesc td = makeDesc(var);
                 if (var.isStatic()) {
-                    mBuilder.storeStaticField(var.getName(), td);
+                    mBuilder.storeStaticField(name, td);
                 }
                 else {
-                    mBuilder.storeField(var.getName(), td);
+                    mBuilder.storeField(name, td);
                 }
             }
             else {
@@ -4232,6 +5036,11 @@ public class JavaClassGenerator extends CodeGenerator {
      * to the MergedClass.
      */
     private boolean isProfilingEnabled() {
+        return false;
+        // TODO: we need to improve the profiling bits that are currently
+        // broken throughout in the new sub blocks, etc
+        
+        /*
         Class<?> mergedClass = mUnit.getRuntimeContext();
         boolean profilingEnabled = true;
 
@@ -4241,6 +5050,48 @@ public class JavaClassGenerator extends CodeGenerator {
             profilingEnabled = (observerMode & MergedClass.OBSERVER_ENABLED) != 0 &&
                 (observerMode & MergedClass.OBSERVER_EXTERNAL) != 0;
         }
+
+    private static interface Initializer {
+        void generate(ClassFile classFile, CodeBuilder builder);
+    }
+    
+    private static class ContextVisitor extends TreeWalker {
+        private boolean contextRequired;
+        
+        public boolean isContextRequired() {
+            return this.contextRequired;
+        }
+        
+        @Override
+        public Object visit(ExpressionStatement node) {
+            this.contextRequired = true;
+            return super.visit(node);
+        }
+
+        @Override
+        public Object visit(ConcatenateExpression node) {
+            this.contextRequired = true;
+            return super.visit(node);
+        }
+        
+        @Override
+        public Object visit(FunctionCallExpression node) {
+            this.contextRequired = true;
+            return super.visit(node);
+        }
+
+        @Override
+        public Object visit(TemplateCallExpression node) {
+            this.contextRequired = true;
+            return super.visit(node);
+        }
+
+        @Override
+        public Object visit(SubstitutionExpression node) {
+            this.contextRequired = true;
+            return super.visit(node);
+        }
+    }
         catch (Exception ex) { profilingEnabled = false; }
         return profilingEnabled;
     }

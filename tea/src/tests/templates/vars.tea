@@ -1,0 +1,11 @@
+<% template vars(String test)
+
+a = 5
+b = 7
+d = 6
+//call util.frame() { 'TEST' }
+//call util.frame() { 'A: ' a }
+//call util.frame() { 'B: ' b }
+call util.frame() { c = 1; b = 9; 'A: ' a }
+a = 9
+call util.frame() {  }

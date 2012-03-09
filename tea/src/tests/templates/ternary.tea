@@ -1,0 +1,44 @@
+<% template ternary()
+
+a = false
+'A: ' a ? 'true' : 'false' '\n'
+
+b = 5
+'B: ' (b ? 'valid' : 'invalid') '\n'
+
+c = #(1, 2, 3)
+'C: ' (c ? 'data' : 'nodata') '\n'
+
+d = ##()
+'D: ' (d ? 'with' : 'without') '\n'
+
+e = 'user'
+'E: ' (e ? 'text' : 'notext') '\n'
+
+f = null
+'F: ' (f ? 'nonnull' : 'null') '\n'
+
+g = f == null ? #('default') : #(f)
+foreach (g1 in g) { 'G: ' g1 '\n' }
+
+h1 = null as HashSet<String>
+h2 = null as ArrayList<String>
+h = (g == null ? h1 : h2)
+'H: ' h '\n'
+
+i = 'blah'
+'I: ' (i == 'blah' ? 'blah' : 'nonblah') '\n'
+
+j = 5
+'J: ' (j ?: 10) '\n'
+
+k = null
+'K: ' k ?: 'valid' '\n'
+
+l = (5 ? ('a' ? 'a5' : 'nona5') : 'b' ? 'b?' : '?')
+'L: ' l '\n'
+
+/*
+m = 5; m = 'test'; m = #(5)
+'M: ' (m isa String ? m.length : 0)
+*/

@@ -1,0 +1,6 @@
+<% template services(String service)
+
+call layouts.main(##('title' : 'Test')) { String group ->
+    name = group & ' - ' & service
+    call render(##{ 'service' : name })
+}

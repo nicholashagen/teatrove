@@ -1,0 +1,38 @@
+<% template nullsafe(String c, List<String> d, Map<String, Date> e, int[] f)
+
+/*
+a = null as String
+'A: ' a?.length ?: 0 '\n'
+*/
+
+/*
+b = 'test'
+'B: ' b?.length '\n'
+*/
+
+/*
+'C: ' c?.length '\n'
+*/
+
+/*
+'D: ' d?[0]?.length '\n'
+*/
+
+/*
+'E: ' e?['test'] '\n'
+'E: ' e['test']?.date '\n' 
+*/
+
+/*
+'F: ' (f?[0] == 0 ? 'invalid' : 'valid') '\n'
+*/
+
+/*
+g = currentDate()
+'G: ' g?.date '\n'
+*/
+
+/*
+h = currentDate()
+'H: ' h?.toString()?.length
+*/

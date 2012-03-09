@@ -296,7 +296,14 @@ public class Scanner {
                 return makeToken(Token.PLUS);
                 
             case '-':
-                return makeToken(Token.MINUS);
+                if (mSource.peek() == '>') {
+                    startPos = mSource.getStartPosition();
+                    mSource.read();
+                    return makeToken(Token.LAMBDA, startPos);
+                }
+                else {
+                    return makeToken(Token.MINUS);
+                }
                 
             case '*':
                 if (mSource.peek() == '.') {

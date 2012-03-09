@@ -104,7 +104,19 @@ public abstract class TreeMutator implements NodeVisitor {
 
         return node;
     }
+
+    public Object visit(LambdaStatement node) {
+        VariableRef[] vars = node.getVariables();
+        for (int i = 0; i < vars.length; i++) {
+            vars[i] = (VariableRef) vars[i].accept(this);
+        }
+
+        node.setVariables(vars);
+        node.setBlock((Block) node.getBlock().accept(this));
         
+        return node;
+    }
+
     public Object visit(AssignmentStatement node) {
         node.getLValue().accept(this);
         node.setRValue(visitExpression(node.getRValue()));
@@ -153,11 +165,7 @@ public abstract class TreeMutator implements NodeVisitor {
         if (block != null) {
             node.setElsePart(visitBlock(block));
         }
-        
-        return node;
-    }
 
-    public Object visit(SubstitutionStatement node) {
         return node;
     }
 
@@ -192,6 +200,17 @@ public abstract class TreeMutator implements NodeVisitor {
         return node;
     }
 
+    public Object visit(NewClassExpression node) {
+        Name name = node.getTarget();
+        if (name != null) {
+            node.setTarget((Name) name.accept(this));
+        }
+
+        node.setExpressionList
+            ((ExpressionList)node.getExpressionList().accept(this));
+        return node;
+    }
+
     public Object visit(NewArrayExpression node) {
         node.setExpressionList
             ((ExpressionList)node.getExpressionList().accept(this));
@@ -206,7 +225,7 @@ public abstract class TreeMutator implements NodeVisitor {
         return visit((CallExpression)node);
     }
 
-    private Object visit(CallExpression node) {
+    public Object visit(CallExpression node) {
         Expression expr = node.getExpression();
         if (expr != null) {
             node.setExpression((Expression)expr.accept(this));
@@ -219,12 +238,29 @@ public abstract class TreeMutator implements NodeVisitor {
             node.setInitializer((Statement)init.accept(this));
         }
 
-        Block subParam = node.getSubstitutionParam();
+        LambdaExpression subParam = node.getSubstitutionParam();
         if (subParam != null) {
-            node.setSubstitutionParam(visitBlock(subParam));
+            node.setSubstitutionParam((LambdaExpression)subParam.accept(this));
         }
         
         return node;
+    }
+    
+    public Object visit(LambdaExpression node) {
+        Block block = visitBlock(node.getBlock());
+        if (block instanceof LambdaBlock) {
+            node.setBlock((LambdaBlock) block);
+        }
+        else {
+            node.setBlock(new LambdaBlock(block));
+        }
+
+        return node;
+    }
+    
+    @Override
+    public Object visit(LambdaBlock node) {
+        return visit((Block) node);
     }
 
     public Object visit(VariableRef node) {
@@ -306,6 +342,13 @@ public abstract class TreeMutator implements NodeVisitor {
         return node;
     }
     
+    public Object visit(SubstitutionExpression node) {
+        if (node.getParams() != null) {
+            node.setParams((ExpressionList)node.getParams().accept(this));
+        }
+        
+        return node;
+    }
     public Object visit(CompareExpression node) {
         node.setLeftExpression((Expression) node.getLeftExpression().accept(this));
         node.setRightExpression((Expression) node.getRightExpression().accept(this));
@@ -374,7 +417,7 @@ public abstract class TreeMutator implements NodeVisitor {
     /**
      * Visit a Block to ensure that new Statement is a Block.
      */
-    protected Block visitBlock(Block block) {
+    protected Block visitBlock(Statement block) {
         if (block == null) {
             return null;
         }

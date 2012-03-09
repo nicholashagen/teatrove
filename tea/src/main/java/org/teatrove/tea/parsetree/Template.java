@@ -39,10 +39,13 @@ public class Template extends Node implements Returnable {
     private List<Directive> mDirectiveList;
     private Map<String, Object> mProperties =
         new HashMap<String, Object>();
+    private List<NewClassExpression> mAnonymousClasses =
+        new ArrayList<NewClassExpression>();
 
     public Template() {
         super(null);
     }
+
     public Template(SourceInfo info,
                     Name name, Variable[] params, boolean subParam,
                     Statement statement, List<Directive> directiveList) {
@@ -78,6 +81,14 @@ public class Template extends Node implements Returnable {
                 t.mDirectiveList.add((Directive) directive.clone());
             }
         }
+        
+        if (mAnonymousClasses != null) {
+            t.mAnonymousClasses = new ArrayList<NewClassExpression>();
+            for (NewClassExpression expr : mAnonymousClasses) {
+                t.mAnonymousClasses.add((NewClassExpression) expr.clone());
+            }
+        }
+        
         return t;
     }
 
@@ -136,5 +147,13 @@ public class Template extends Node implements Returnable {
 
     public void setReturnType(Type type) {
         mType = type;
+    }
+    
+    public List<NewClassExpression> getAnonymousClasses() {
+        return this.mAnonymousClasses;
+    }
+    
+    public void addAnonymousClass(NewClassExpression expr) {
+        mAnonymousClasses.add(expr);
     }
 }

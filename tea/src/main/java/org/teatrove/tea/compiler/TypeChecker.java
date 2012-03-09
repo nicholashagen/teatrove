@@ -289,13 +289,45 @@ public class TypeChecker {
         }
 
         private Scope enterScope() {
-            return mScope = new Scope(mScope);
+            return enterScope(false);
+        }
+
+        private Scope enterScope(boolean delegating) {
+            return mScope = new Scope(mScope, delegating);
         }
 
         private Scope exitScope() {
             return mScope = mScope.getParent();
         }
 
+        private void defineVariable(VariableRef ref) {
+            Type type = null;
+            
+            type = ref.getType();
+            if (type == null) {
+                Variable var = ref.getVariable();
+                if (var != null) {
+                    type = var.getType();
+                    if (type == null) {
+                        TypeName typeName = var.getTypeName();
+                        if (typeName != null) {
+                            type = typeName.getType();
+                            if (type == null) {
+                                check(typeName);
+                                type = typeName.getType();
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (type == null) {
+                type = Type.DERIVED_TYPE;
+            }
+            
+            defineVariable(ref, type);
+        }
+        
         private void defineVariable(VariableRef ref, Type type) {
             Variable v = ref.getVariable();
             boolean staticallyTyped = v != null ? v.isStaticallyTyped() : false;
@@ -311,13 +343,32 @@ public class TypeChecker {
                 newVar.setType(type);
             }
 
-            mScope.declareVariable(newVar);
+            newVar = mScope.declareVariable(newVar);
+            newVar.declareVariable();
+            // if more than one declaration and part of sub block
+            // setVar on ref
             if (!mScope.bindToVariable(ref)) {
                 // Shouldn't happen.
                 error("variable.undefined", ref.getName(), ref);
             }
+            
+            // check for prior scopes that contain matching variable refs
+            // TODO: is this really the best way?
+            if (!newVar.isFinal()) {
+                for (Scope scope : mScope.getChildren()) {
+                    for (VariableRef vref : scope.getVariableRefs()) { 
+                        if (vref.getName().equals(ref.getName())) {
+                            Variable var = vref.getVariable();
+                            if (var.isDelegate()) {
+                                var.setField(false);
+                                var.getDelegate().setField(true);
+                            }
+                        }
+                    }
+                }
+            }
         }
-
+        
         public void check(Node node) {
             node.accept(this);
         }
@@ -350,6 +401,18 @@ public class TypeChecker {
             }
 
             Type returnType = mReturnType;
+            if (node instanceof TemplateClass) {
+                String pkg = mUnit.getTargetPackage();
+                // String name = node.getName().getName();
+                DynamicType dynamic = new DynamicType(pkg, mUnit.getName());
+                if (declared != null) {
+                    for (Variable v : declared) {
+                        dynamic.addParameter(v.getName(), v.getType());
+                    }
+                }
+
+                returnType = dynamic;
+            }
             if (returnType == null) {
                 returnType = Type.VOID_TYPE;
             }
@@ -363,6 +426,139 @@ public class TypeChecker {
             return null;
         }
 
+        public Object visit(DynamicTypeName node) {
+            String name = node.getName();
+            Compiler compiler = mUnit.getCompiler();
+
+            // Look for a matching template to call.
+
+            CompilationUnit unit = compiler.getCompilationUnit(name, mUnit);
+            if (unit == mUnit) {
+                unit = compiler.getCompilationUnit(name, null);
+            }
+            
+            if (unit == null) {
+                error("dynamictype.not.found", node);
+                return null;
+            }
+
+            Template tree = unit.getParseTree();
+            if (tree instanceof TemplateClass) {
+                node.setType(tree.getReturnType());
+            }
+            else {
+                List<NewClassExpression> classes = tree.getAnonymousClasses();
+                if (classes.size() == 1) {
+                    node.setType(classes.get(0).getType());
+                }
+                else {
+                    error("dynamictype.not.templateclass", node);
+                }
+            }
+
+            /*
+             * TODO: dimensions?
+            int dim = node.getDimensions();
+            if (dim > 0) {
+                clazz =
+                    Array.newInstance(clazz, new int[dim]).getClass();
+            }
+
+            node.setType(new Type(clazz));
+            */
+
+            return null;
+        }
+
+        public Object visit(TypeName node) {
+            if (node instanceof DynamicTypeName) {
+                return visit((DynamicTypeName) node);
+            }
+
+            // Check that type name is a valid java class.
+            String name = node.getName();
+            StringBuffer fb = new StringBuffer(name);
+            // strip array descriptors from class names, we know its an array from the type node.
+            if (name != null && !name.isEmpty() && name.charAt(0) == '[') {
+                fb.deleteCharAt(name.lastIndexOf('[') + 1);
+                int i = 0;
+                while ((i = fb.indexOf("[")) != -1)
+                    fb.deleteCharAt(i);
+                if ((i = fb.indexOf(";")) != -1)
+                    fb.deleteCharAt(i);
+            }
+            String checkName = fb.toString();
+            String fixedName = checkName;
+            String errorMsg = null;
+
+            boolean resolved = false;
+            String resolvedPackage = mImports[0];
+            for (int i=-1; i<mImports.length; i++) {
+                if (i >= 0) {
+                    checkName = mImports[i] + '.' + fixedName;
+                }
+
+                try {
+                    Class<?> clazz = null;
+                    if (checkName.equals("boolean"))
+                        clazz = Boolean.TYPE;
+                    else if (checkName.equals("int"))
+                        clazz = Integer.TYPE;
+                    else if (checkName.equals("double"))
+                        clazz = Double.TYPE;
+                    else if (checkName.equals("long"))
+                        clazz = Long.TYPE;
+                    else if (checkName.equals("short"))
+                        clazz = Short.TYPE;
+                    else
+                        clazz = loadClass(checkName);
+                    checkAccess(clazz, node);
+
+                    // Found class, check if should be array.
+                    int dim = node.getDimensions();
+                    if (dim > 0) {
+                        clazz =
+                            Array.newInstance(clazz, new int[dim]).getClass();
+                    }
+
+                    checkGenericTypeNames(clazz, node);
+                    errorMsg = null;
+                    if (! resolved) {
+                        resolved = true;
+                        if (! mHasImports)
+                            return null;
+                        if (i > 0)
+                            resolvedPackage = mImports[i];
+                        continue;
+                    }
+                    else {
+                        if (i >= 0)
+                            error("typename.package.conflict", name, resolvedPackage, mImports[i], node);
+                        return null;
+                    }
+
+                }
+                catch (ClassNotFoundException e) {
+                    if (errorMsg == null) {
+                        errorMsg = mFormatter.format("typename.unknown", name);
+                    }
+                }
+                catch (RuntimeException e) {
+                    error(e.toString(), node);
+                }
+                catch (LinkageError e) {
+                    error(e.toString(), node);
+                    return null;
+                }
+            }
+
+            // Fall through to here only if class wasn't found.
+            if (!resolved && errorMsg != null) {
+                error(errorMsg, node);
+            }
+
+            return null;
+        }
         protected Class<?> lookupType(String name, int dim, Node node) {
             StringBuffer fb = new StringBuffer(name);
             // strip array descriptors from class names, we know its an array from the type node.
@@ -556,6 +752,42 @@ public class TypeChecker {
             return visit((StatementList)node);
         }
 
+        public Object visit(LambdaStatement lambda) {
+            // Enter a new scope because variable declarations local
+            // to a lambda closure might never get a value assigned because
+            // there is no guarantee that the body will ever execute.
+            Scope bodyScope = enterScope();
+
+            Block body = lambda.getBlock();
+            VariableRef[] args = lambda.getVariables();
+            for (VariableRef arg : args) {
+                defineVariable(arg);
+            }
+
+            check(body);
+            
+            exitScope();
+
+            Variable[] vars = bodyScope.promote();
+
+            if (vars.length > 0) {
+                // Since the body can be executed multiple times, variables
+                // must be of the correct type before entering the scope.
+                lambda.setInitializer
+                    (createConversions(mScope, vars, lambda.getSourceInfo()));
+
+                // Apply any conversions at the end of the body as well in
+                // order for the variables to be of the correct type when
+                // accessed again at the start of the body.
+                lambda.setFinalizer
+                    (createConversions(bodyScope, vars, lambda.getSourceInfo()));
+
+                // Declare all promoted variables outside body scope.
+                mScope.declareVariables(vars);
+            }
+            
+            return null;
+        }
 
         public Object visit(AssignmentStatement node) {
             VariableRef lvalue = node.getLValue();
@@ -1038,15 +1270,6 @@ public class TypeChecker {
             }
         }
 
-        public Object visit(SubstitutionStatement node) {
-            // Check if substitution allowed in this template.
-            if (!mUnit.getParseTree().hasSubstitutionParam()) {
-                error("substitution.undeclared", node);
-            }
-
-            return null;
-        }
-
         public Object visit(ExpressionStatement node) {
             Expression expr = node.getExpression();
             if (expr instanceof CallExpression) {
@@ -1119,6 +1342,241 @@ public class TypeChecker {
         public Object visit(ParenExpression node) {
             Expression expr = node.getExpression();
             check(expr);
+            return null;
+        }
+
+        protected Object anonymousNewClassExpression(NewClassExpression node) {
+            // verify associative
+            if (!node.isAssociative()) {
+                error("newclassexpresion.not.associative", node);
+                return null;
+            }
+
+            ExpressionList list = node.getExpressionList();
+            check(list);
+
+            Expression[] exprs = list.getExpressions();
+            int length = exprs.length;
+
+            if (length % 2 != 0) {
+                error("newarrayexpression.associative", node);
+                return null;
+            }
+
+            long hash = 0;
+            Type[] types = new Type[length / 2];
+            String[] names = new String[length / 2];
+            for (int i = 0; i < length - 1; i += 2) {
+                Expression var = exprs[i];
+                Expression expr = exprs[i + 1];
+
+                String varname = null;
+                if (var instanceof StringLiteral) {
+                    varname = (String) ((StringLiteral) var).getValue();
+                } else {
+                    error("newclassexpression.invalid.key", node);
+                    continue;
+                }
+
+                hash += (17 * varname.hashCode()) +
+                        (23 * expr.getType().getClassName().hashCode());
+
+                names[i / 2] = varname;
+                types[i / 2] = expr.getType();
+            }
+
+            String pkg = mUnit.getTargetPackage();
+            String className = null;
+            if (pkg == null) { className = mUnit.getName(); }
+            else { className = pkg + '.' + mUnit.getName(); }
+
+            DynamicType type =
+                new DynamicType(className + "$anon" + Math.abs(hash));
+
+            for (int i = 0; i < names.length; i++) {
+                type.addParameter(names[i], types[i]);
+            }
+
+            node.setType(type);
+            
+            mUnit.getParseTree().addAnonymousClass(node);
+            
+            return null;
+        }
+
+        public Object visit(NewClassExpression node) {
+            if (node.isAnonymous()) {
+                return anonymousNewClassExpression(node);
+            }
+
+            Compiler compiler = mUnit.getCompiler();
+            String name = node.getTarget().getName();
+
+            // look for a matching template to call.
+
+            CompilationUnit unit = compiler.getCompilationUnit(name, mUnit);
+            if (unit == null) {
+                error("templatecallexpression.not.found", node);
+                return null;
+            }
+
+            // TODO: if tree is templaet and template has only one 
+            Template tree = unit.getParseTree();
+            if (!(tree instanceof TemplateClass)) {
+                error("templatecallexpression.not.class", node);
+                return null;
+            }
+
+            Variable[] formalParams = tree.getParams();
+            node.setType(tree.getReturnType());
+            node.setCalledTemplate(unit);
+
+            // handle associative arguments
+            if (node.isAssociative()) {
+                ExpressionList list = node.getExpressionList();
+                check(list);
+
+                Expression[] exprs = list.getExpressions();
+                int length = exprs.length;
+
+                if (length % 2 != 0) {
+                    error("newarrayexpression.associative", node);
+                }
+
+                for (int i = 0; i < length - 1; i += 2) {
+                    Expression var = exprs[i];
+                    Expression expr = exprs[i + 1];
+
+                    String varname = null;
+                    if (var instanceof StringLiteral) {
+                        varname = (String) ((StringLiteral) var).getValue();
+                    } else {
+                        error("newclassexpression.invalid.key", node);
+                        continue;
+                    }
+
+                    Variable found = null;
+                    for (int j = 0; j < formalParams.length; j++) {
+                        Variable param = formalParams[j];
+
+                        if (param.getName().equals(varname)) {
+                            found = param;
+                            break;
+                        }
+                    }
+
+                    if (found == null) {
+                        error("newclassexpression.key.not.found", node);
+                        continue;
+                    }
+
+                    Type type = found.getType();
+                    Type actual = expr.getType();
+
+                    if (type == null) {
+                        error("templatecallexpression.parameter.unknown",
+                              node);
+                        return null;
+                    }
+
+                    int cost = type.convertableFrom(actual);
+                    if (cost < 0) {
+                        node.setCalledTemplate(null);
+
+                        String msg1 = type.getFullName();
+                        String msg2 = actual.getFullName();
+
+                        ClassLoader CL1 = type.getNaturalClass()
+                            .getClassLoader();
+
+                        ClassLoader CL2 = actual.getNaturalClass()
+                            .getClassLoader();
+
+                        if (CL1 != CL2) {
+                            msg1 += "(" + CL1 + ")";
+                            msg2 += "(" + CL2 + ")";
+                        }
+
+                        error("templatecallexpression.conversion",
+                              msg1, msg2, exprs[i]);
+                    }
+                    else {
+                        expr.convertTo(type, false);
+                    }
+                }
+            }
+
+            // handle ctor arguments
+            else {
+                ExpressionList list = node.getExpressionList();
+                check(list);
+
+                Expression[] exprs = list.getExpressions();
+                int length = exprs.length;
+                Type[] actualTypes = new Type[length];
+                for (int i=0; i<length; i++) {
+                    actualTypes[i] = exprs[i].getType();
+                }
+
+                if (formalParams != null) {
+                    if (formalParams.length != length) {
+                        error("templatecallexpression.parameter.count",
+                              String.valueOf(formalParams.length),
+                              String.valueOf(length), node);
+                        return null;
+                    }
+
+                    node.setCalledTemplate(unit);
+                    for (int i=0; i<length; i++) {
+                        Type type = formalParams[i].getType();
+
+                        if (type == null) {
+                            error("templatecallexpression.parameter.unknown",
+                                  node);
+                            return null;
+                        }
+
+                        int cost = type.convertableFrom(actualTypes[i]);
+                        if (cost < 0) {
+                            node.setCalledTemplate(null);
+
+                            String msg1 = actualTypes[i].getFullName();
+                            String msg2 = type.getFullName();
+
+                            ClassLoader CL1 = actualTypes[i].getNaturalClass()
+                                .getClassLoader();
+
+                            ClassLoader CL2 = type.getNaturalClass()
+                                .getClassLoader();
+
+                            if (CL1 != CL2) {
+                                msg1 += "(" + CL1 + ")";
+                                msg2 += "(" + CL2 + ")";
+                            }
+
+                            error("templatecallexpression.conversion",
+                                  msg1, msg2, exprs[i]);
+                        }
+                        else {
+                            exprs[i].convertTo(type, false);
+                        }
+                    }
+                }
+            }
+
+            Type retType = tree.getReturnType();
+            if (retType == null) {
+                retType = Type.VOID_TYPE;
+            }
+            node.setType(retType);
+
+            if (Type.VOID_TYPE.equals(retType)) {
+                //error("templatecallexpression.template.void", node);
+                //return null;
+                retType = Type.OBJECT_TYPE;
+                node.setType(retType);
+            }
+
             return null;
         }
 
@@ -1213,23 +1671,83 @@ public class TypeChecker {
                 actualTypes[i] = exprs[i].getType();
             }
 
-            Block subParam = node.getSubstitutionParam();
+            LambdaExpression subParam = node.getSubstitutionParam();
             Compiler compiler = mUnit.getCompiler();
             String name = node.getTarget().getName();
+            
+            // Attempt to resolve variables if provided
+            String[] tokens = name.split("\\.");
+            if (tokens.length >= 2) {
+                // Check each valid property
+                Variable var = mScope.getDeclaredVariable(tokens[0]);
+                if (var != null) {
+                    SourceInfo info = node.getTarget().getSourceInfo();
+                    
+                    VariableRef ref = new VariableRef(info, var.getName());
+                    ref.setVariable(var);
+                    
+                    Expression expr = ref;
+                    for (int i = 1; i < tokens.length - 1; i++) {
+                        expr = new Lookup(info, expr, null, 
+                                          new Name(info, tokens[i]));
+                    }
+                    
+                    name = tokens[tokens.length - 1];
+                    node.setExpression(expr);
+                    check(expr);
+                }
+            }
 
             // Look for Java function to call.
             name = name.replace('.', '$');
 
+            // Look for Variable Reference
             Method m = null;
             Expression expr = node.getExpression();
-
+            if (m == null && expr == null) {
+                Variable var = mScope.getDeclaredVariable(name);
+                if (var != null && 
+                    Substitution.class.isAssignableFrom(var.getType().getObjectClass())) {
+                    Class<?>[] subParams = new Class<?>[length == 0 ? 1 : 2];
+                    subParams[0] = Context.class;
+                    if (length > 0) { subParams[1] = Object[].class; }
+                    
+                    try {
+                        m = Substitution.class.getMethod("rsubstitute", subParams);
+                        if (m != null) {
+                            VariableRef reference =
+                                new VariableRef(var.getSourceInfo(), 
+                                                var.getName());
+                            check(reference);
+                            node.setCaller(reference);
+                            
+                            // prepend context type to expression list as null
+                            // literal...generator should ignore first param and
+                            // generate the context instead
+                            Expression[] tmp = new Expression[exprs.length + 1];
+                            tmp[0] = new NullLiteral(var.getSourceInfo());
+                            tmp[0].setType(new Type(mUnit.getRuntimeContext()));
+                            for (int i = 0; i < exprs.length; i++) {
+                                tmp[i + 1] = exprs[i];
+                            }
+                            
+                            exprs = tmp;
+                            ExpressionList params = node.getParams();
+                            node.setParams(new ExpressionList(params.getSourceInfo(), tmp));
+                        }
+                    }
+                    catch (Exception e) {
+                        error("functioncallexpression.not.found", node);
+                    }
+                }
+            }
+            
             // Look for Context Method or Invoked Method
             if (m == null) {
                 if (subParam != null) {
                     Type[] types = new Type[length + 1];
                     System.arraycopy(actualTypes, 0, types, 0, length);
-                    types[length] =
-                        new Type(org.teatrove.tea.runtime.Substitution.class);
+                    types[length] = subParam.getType();
                     actualTypes = types;
                 }
 
@@ -1293,13 +1811,22 @@ public class TypeChecker {
             }
 
             Expression[] exprs = node.getParams().getExpressions();
+            
             int length = exprs.length;
+            boolean hasSubParam = node.getSubstitutionParam() != null;
+            if (!hasSubParam && exprs.length > 0 && 
+                Substitution.class.isAssignableFrom(exprs[exprs.length - 1].getType().getObjectClass())) {
+                
+                length -= 1;
+                hasSubParam = true;
+            }
+            
             Type[] actualTypes = new Type[length];
             for (int i=0; i<length; i++) {
                 actualTypes[i] = exprs[i].getType();
             }
 
-            Block subParam = node.getSubstitutionParam();
+            LambdaExpression subParam = node.getSubstitutionParam();
             Compiler compiler = mUnit.getCompiler();
             String name = node.getTarget().getName();
 
@@ -1322,12 +1849,12 @@ public class TypeChecker {
                     return null;
                 }
 
-                if (subParam != null && !tree.hasSubstitutionParam()) {
+                if (hasSubParam && !tree.hasSubstitutionParam()) {
                     error("templatecallexpression.substitution.no",
                           tree.getName().getName(), subParam);
                     return null;
                 }
-                else if (subParam == null && tree.hasSubstitutionParam()) {
+                else if (!hasSubParam && tree.hasSubstitutionParam()) {
                     error("templatecallexpression.substitution.yes",
                           tree.getName().getName(), node);
                 }
@@ -1337,9 +1864,19 @@ public class TypeChecker {
                     Type type = formalParams[i].getType();
 
                     if (type == null) {
+                        // dynamic types may point back to a calling template that
+                        // has not yet been init'd because it calls this template,
+                        // so just attempt to resolve it directly
+                        if (formalParams[i].getTypeName() instanceof DynamicTypeName) {
+                            check(formalParams[i].getTypeName());
+                            type = formalParams[i].getTypeName().getType();
+                        }
+                        
+                        if (type == null) {
                         error("templatecallexpression.parameter.unknown",
                               node);
                         return null;
+                        }
                     }
 
                     int cost = type.convertableFrom(actualTypes[i]);
@@ -1454,56 +1991,9 @@ public class TypeChecker {
                 check(init);
             }
 
-            // handle substitution block
-            Block subParam = node.getSubstitutionParam();
+            LambdaExpression subParam = node.getSubstitutionParam();
             if (subParam != null) {
-                // Enter a new scope because variable declarations local
-                // to a substitution block might never get a value assigned
-                // because there is no guarantee it will ever execute.
-                Scope subScope = enterScope();
                 check(subParam);
-                exitScope();
-
-                Variable[] vars = subScope.promote();
-
-                if (vars.length > 0) {
-                    // Since the subParam can be executed multiple times,
-                    // variables must be of the correct type before entering
-                    // the scope.
-                    node.setInitializer
-                        (createConversions(mScope, vars,node.getSourceInfo()));
-
-                    // Apply any conversions at the end of the subParam as well
-                    // in order for the variables to be of the correct type
-                    // when accessed again at the start of the body.
-                    subParam.setFinalizer
-                        (createConversions
-                         (subScope, vars, subParam.getSourceInfo()));
-
-                    // Promoted variables need to become fields
-                    for (int i=0; i<vars.length; i++) {
-                        vars[i].setField(true);
-                    }
-
-                    // Declare all promoted variables outside subParam scope.
-                    mScope.declareVariables(vars);
-
-                    // Re-check subParam to account for variable declaration
-                    // changes.
-                    if (mErrorCount == 0) {
-                        subScope.delete();
-                        subScope = enterScope();
-                        check(subParam);
-                        exitScope();
-                    }
-                }
-
-                // References inside a substitution block to variables
-                // outside need to be fields so that they can be shared.
-                VariableRef[] refs = subScope.getOutOfScopeVariableRefs();
-                for (int i=0; i<refs.length; i++) {
-                    refs[i].getVariable().setField(true);
-                }
             }
 
             Expression[] exprs = params.getExpressions();
@@ -1521,6 +2011,126 @@ public class TypeChecker {
             }
 
             return true;
+        }
+        
+        public Object visit(LambdaExpression node) {
+            // Check actual substitution block and statements
+            LambdaBlock block = node.getBlock();
+            if (block != null) {
+                // Enter a new scope because variable declarations local
+                // to a substitution block might never get a value assigned
+                // because there is no guarantee it will ever execute.
+                // Set the scope to be delegating since substitution blocks are
+                // stored in separate classes and must delegate to outer class
+                Scope subScope = enterScope(true);
+
+                // save current state and default new state
+                Type oldReturnType = mReturnType;
+                mReturnType = null;
+
+                // check block
+                check(block);
+                
+                // process return type
+                Type returnType = mReturnType;
+                if (returnType == null) {
+                    block = new LambdaBlock
+                    (
+                        block.getSourceInfo(), new Statement[] {
+                            block,
+                            new ExpressionStatement
+                            (
+                                new NullLiteral(block.getSourceInfo())
+                            )
+                        }
+                    );
+
+                    returnType = Type.OBJECT_TYPE;
+                    node.setBlock(block);
+                }
+                else if (returnType.isPrimitive()) {
+                    returnType = returnType.toNonPrimitive();
+                }
+                
+                // save return type
+                block.setReturnType(returnType);
+                
+                // restore saved state
+                mReturnType = oldReturnType;
+                
+                // exit scope
+                exitScope();
+
+                // promote shared variables
+                Variable[] vars = subScope.promote();
+                block.setPromotedVariables(vars);
+                
+                if (vars.length > 0) {
+                    // Since the subParam can be executed multiple times,
+                    // variables must be of the correct type before entering
+                    // the scope.
+                    block.setInitializer
+                        (createConversions(mScope, vars,node.getSourceInfo()));
+
+                    // Apply any conversions at the end of the subParam as well
+                    // in order for the variables to be of the correct type
+                    // when accessed again at the start of the body.
+                    block.setFinalizer
+                        (createConversions
+                         (subScope, vars, block.getSourceInfo()));
+
+                    // Promoted variables need to become fields
+                    for (int i=0; i<vars.length; i++) {
+                        // TODO: promoted vars include all?
+                        if (!vars[i].isFinal() && vars[i].isDelegate()) {
+                            //vars[i].setField(true);
+                            vars[i].getDelegate().setField(true);
+                        }
+                    }
+
+                    // Declare all promoted variables outside subParam scope.
+                    mScope.declareVariables(vars);
+
+                    // Re-check subParam to account for variable declaration
+                    // changes.
+                    if (mErrorCount == 0) {
+                        subScope.delete();
+                        subScope = enterScope();
+                        check(block);
+                        exitScope();
+                    }
+                }
+
+                // References inside a substitution block to variables
+                // outside need to be fields so that they can be shared.
+                VariableRef[] refs = subScope.getOutOfScopeVariableRefs();
+                block.setOutOfScopeVariables(refs);
+                
+                for (int i=0; i<refs.length; i++) {
+                    Variable delegate = refs[i].getVariable();
+                    Variable var = (delegate.isDelegate() ? delegate : delegate.createDelegate());
+                    
+                    if (!delegate.isFinal()) {
+                        var.setField(false);
+                        delegate.setField(true);
+                    }
+                    else {
+                        var.setField(true);
+                    }
+                    
+                    refs[i].setVariable(var);
+                }
+            }
+            
+            if (!Substitution.class.isAssignableFrom(node.getType().getObjectClass())) {
+                error("lambda.expr.not.substitution", node);
+            }
+            
+            return node;
+        }
+        
+        public Object visit(LambdaBlock node) {
+            return visit((Block) node);
         }
 
         public Object visit(VariableRef node) {
@@ -1712,7 +2322,7 @@ public class TypeChecker {
 
                 PropertyDescriptor prop = properties.get(lookupName);
                 // TODO: consider checking if public field named lookupName
-                if (prop == null) {
+                    if (prop == null && !type.isDynamic()) {
                     error("lookup.undefined", lookupName, type.getSimpleName(),
                           node.getLookupName());
                     return null;
@@ -1750,9 +2360,19 @@ public class TypeChecker {
 
                         nodeType = (te != null ? new Type(retClass, ge, te)
                                                : new Type(retClass, ge));
+                        }
                     }
-                }
-
+                    else if (type instanceof DynamicType) {
+                        DynamicType dynamic = (DynamicType) type;
+                        if (!dynamic.hasParameter(lookupName)) {
+                            error("lookup.unreadable", lookupName,
+                                  node.getLookupName());
+                            return null;
+                        }
+    
+                        nodeType = dynamic.getParameterType(lookupName);
+                    }
+    
                 Class<?> nodeClass = nodeType.getNaturalClass();
                 Type genericType = Generics.findType(nodeType, type);
                 if (genericType != null) {
@@ -1951,6 +2571,34 @@ public class TypeChecker {
 
             Type leftType = left.getType();
             Type rightType = right.getType();
+
+            Type newLeftType = null, newRightType = null;
+            if (leftType == Type.DERIVED_TYPE &&
+                rightType == Type.DERIVED_TYPE) {
+                newLeftType = newRightType = new Type(Number.class).toNonNull();
+            }
+            else if (leftType == Type.DERIVED_TYPE) {
+                newLeftType = rightType.toNonPrimitive().toNonNull();
+            }
+            else if (rightType == Type.DERIVED_TYPE) {
+                newRightType = leftType.toNonPrimitive().toNonNull();
+            }
+
+            if (newLeftType != null) {
+                leftType = newLeftType;
+                left.setType(newLeftType);
+                if (left instanceof VariableRef) {
+                    ((VariableRef) left).getVariable().setType(newLeftType);
+                }
+            }
+
+            if (newRightType != null) {
+                rightType = newRightType;
+                right.setType(newRightType);
+                if (right instanceof VariableRef) {
+                    ((VariableRef) right).getVariable().setType(newRightType);
+                }
+            }
 
             if (binaryTypeCheck(node, Number.class)) {
                 Type type =
@@ -2210,7 +2858,27 @@ public class TypeChecker {
             if (elsePart != null) {
                 elsePart.convertTo(type);
             }
+            
+            return null;
+        }
 
+        public Object visit(SubstitutionExpression node) {
+            // Check if substitution allowed in this template.
+            if (!mUnit.getParseTree().hasSubstitutionParam()) {
+                error("substitution.undeclared", node);
+            }
+        
+            // check for params
+            ExpressionList params = node.getParams();
+            if (params != null) {
+                this.check(params);
+            }
+            
+            // store default type
+            // there is no reliable way to detect this type
+            node.setType(Type.OBJECT_TYPE);
+            
+            // nothing to do
             return null;
         }
 
@@ -2569,95 +3237,124 @@ public class TypeChecker {
      * added to the end.
      */
     private static class ReturnConvertor extends TreeMutator {
+        private int mBlockCount;
         private boolean mReturnAdded;
         public Object visit(Template node) {
             Statement stmt = node.getStatement();
-            if (stmt != null) {
-                stmt = (Statement)stmt.accept(this);
-                if (!mReturnAdded) {
-                    Statement[] stmts = new Statement[] {
-                        stmt,
-                        new ReturnStatement(stmt.getSourceInfo())
-                    };
-                    stmt = new StatementList(stmt.getSourceInfo(), stmts);
+            node.setStatement(processReturns(node, stmt, false));
+            return node;
                 }
-                node.setStatement(stmt);
+        
+        public Object visit(LambdaExpression node) {
+            LambdaBlock block = node.getBlock();
+            Statement stmt = processReturns(node, block, true);
+            if (stmt instanceof LambdaBlock) {
+                node.setBlock((LambdaBlock) stmt);
             }
             else {
-                node.setStatement(new ReturnStatement(node.getSourceInfo()));
+                node.setBlock(new LambdaBlock(stmt));
             }
-
+            
             return node;
         }
-
-        public Object visit(Statement node) {
-            return node;
-        }
-
-        public Object visit(ImportDirective node) {
-            return node;
+        
+        @Override
+        public Object visit(Block node) {
+            return visit((StatementList) node);
         }
 
         public Object visit(StatementList node) {
             // Just traverse the last statement in the list.
+            boolean found = false;
             Statement[] statements = node.getStatements();
             for (int i = statements.length - 1; i >= 0; i--) {
                 Statement stmt = statements[i];
                 if (stmt != null) {
-                    statements[i] = (Statement)stmt.accept(this);
-                    break;
+                    if (found) { mBlockCount++; }
+                    statements[i] = (Statement) stmt.accept(this);
+                    if (found)  { mBlockCount--; }
+                    found = true;
                 }
             }
             return node;
         }
 
-        public Object visit(Block node) {
-            return visit((StatementList)node);
-        }
-
         public Object visit(ExpressionStatement node) {
+            if (mBlockCount > 0) {
+                return super.visit(node);
+            }
+            
             mReturnAdded = true;
             Expression expr = node.getExpression();
             if (expr instanceof CallExpression) {
-                ((CallExpression)expr).setVoidPermitted(true);
+                CallExpression call = (CallExpression) expr;
+                call.setVoidPermitted(true);
+                
+                this.visit(call);
             }
+      
             return new ReturnStatement(expr);
         }
 
-        public Object visit(AssignmentStatement node) {
-            // Skip traversing this node altogether.
-            return node;
-        }
-
-        public Object visit(BreakStatement node) {
-            // Skip traversing this node altogether.
-            return node;
-        }
-
-        public Object visit(ContinueStatement node) {
-            // Skip traversing this node altogether.
-            return node;
-        }
-
         public Object visit(ForeachStatement node) {
-            // Skip traversing this node altogether.
-            return node;
+            mBlockCount++;
+            Object result = super.visit(node);
+            mBlockCount--;
+
+            return result;
         }
 
         public Object visit(IfStatement node) {
-            // Skip traversing this node altogether.
-            return node;
-        }
+            mBlockCount++;
+            Object result = super.visit(node);
+            mBlockCount--;
 
-        public Object visit(SubstitutionStatement node) {
-            // Skip traversing this node altogether.
-            return node;
+            return result;
         }
 
         public Object visit(ReturnStatement node) {
             // Skip traversing this node altogether.
-            mReturnAdded = true;
+            // REWRITER: MODIFIED
+            // TODO: why is this needed here for rewriter but not compiler?
+            // mReturnAdded = true;
             return node;
+        }
+
+        protected Statement processReturns(Node node, Statement stmt,
+                                           boolean required) {
+            // save current state and restore on completion
+            int prevBlockCount = mBlockCount;
+            boolean prevReturnAdded = mReturnAdded;
+            
+            // reset state to process this statement
+            mBlockCount = 0;
+            mReturnAdded = false;
+            Statement result = stmt;
+            
+            // process statements and update if return added
+            if (stmt != null) {
+                stmt = (Statement) stmt.accept(this);
+                if (!mReturnAdded) {
+                    ReturnStatement ret = new ReturnStatement(stmt.getSourceInfo());
+                    if (required) {
+                        ret.setExpression(new NullLiteral(stmt.getSourceInfo()));
+                    }
+                    
+                    Statement[] stmts = new Statement[] { stmt, ret };
+                    stmt = new StatementList(stmt.getSourceInfo(), stmts);
+                }
+                result = stmt;
+            }
+            else {
+                result = new ReturnStatement(node.getSourceInfo());
+            }
+            
+            // restore state
+            mBlockCount = prevBlockCount;
+            mReturnAdded = prevReturnAdded;
+            
+            // return updated statement
+            return result;
         }
     }
 
@@ -2764,10 +3461,6 @@ public class TypeChecker {
             return new ExceptionGuardStatement(node, replacement);
         }
 
-        public Object visit(SubstitutionStatement node) {
-            return new ExceptionGuardStatement(node, null);
-        }
-
         public Object visit(ExpressionStatement node) {
             Expression expr = node.getExpression();
             if (expr != null) {
@@ -2790,6 +3483,17 @@ public class TypeChecker {
             return node;
         }
 
+        public Object visit(LambdaExpression node) {
+            Block block = visitBlock(node.getBlock());
+            if (block instanceof LambdaBlock) {
+                node.setBlock((LambdaBlock) block);
+            }
+            else {
+                node.setBlock(new LambdaBlock(block));
+            }
+            
+            return node;
+        }
         public Object visit(FunctionCallExpression node) {
             return visit((CallExpression)node);
         }

@@ -36,6 +36,7 @@ import org.teatrove.tea.parsetree.CompareExpression;
 import org.teatrove.tea.parsetree.ConcatenateExpression;
 import org.teatrove.tea.parsetree.ContinueStatement;
 import org.teatrove.tea.parsetree.Directive;
+import org.teatrove.tea.parsetree.DynamicTypeName;
 import org.teatrove.tea.parsetree.Expression;
 import org.teatrove.tea.parsetree.ExpressionList;
 import org.teatrove.tea.parsetree.ExpressionStatement;
@@ -43,11 +44,14 @@ import org.teatrove.tea.parsetree.ForeachStatement;
 import org.teatrove.tea.parsetree.FunctionCallExpression;
 import org.teatrove.tea.parsetree.IfStatement;
 import org.teatrove.tea.parsetree.ImportDirective;
+import org.teatrove.tea.parsetree.LambdaBlock;
+import org.teatrove.tea.parsetree.LambdaExpression;
+import org.teatrove.tea.parsetree.LambdaStatement;
 import org.teatrove.tea.parsetree.Lookup;
 import org.teatrove.tea.parsetree.Name;
 import org.teatrove.tea.parsetree.NegateExpression;
 import org.teatrove.tea.parsetree.NewArrayExpression;
-import org.teatrove.tea.parsetree.NoOpExpression;
+import org.teatrove.tea.parsetree.NewClassExpression;
 import org.teatrove.tea.parsetree.Node;
 import org.teatrove.tea.parsetree.NotExpression;
 import org.teatrove.tea.parsetree.NullLiteral;
@@ -60,9 +64,10 @@ import org.teatrove.tea.parsetree.SpreadExpression;
 import org.teatrove.tea.parsetree.Statement;
 import org.teatrove.tea.parsetree.StatementList;
 import org.teatrove.tea.parsetree.StringLiteral;
-import org.teatrove.tea.parsetree.SubstitutionStatement;
+import org.teatrove.tea.parsetree.SubstitutionExpression;
 import org.teatrove.tea.parsetree.Template;
 import org.teatrove.tea.parsetree.TemplateCallExpression;
+import org.teatrove.tea.parsetree.TemplateClass;
 import org.teatrove.tea.parsetree.TernaryExpression;
 import org.teatrove.tea.parsetree.TypeName;
 import org.teatrove.tea.parsetree.Variable;
@@ -207,9 +212,12 @@ public class Parser {
 
         SourceInfo templateInfo = token.getSourceInfo();
 
-        if (token.getID() != Token.TEMPLATE) {
+        Token typeToken = token;
+        int type = token.getID();
+        if (type != Token.TEMPLATE && type != Token.CLASS) {
+            int peek = peek().getID();
             if (token.getID() == Token.STRING &&
-                peek().getID() == Token.TEMPLATE) {
+                (peek == Token.TEMPLATE || peek == Token.CLASS)) {
 
                 error("template.start", token);
                 token = read();
@@ -222,12 +230,18 @@ public class Parser {
         SourceInfo nameInfo = peek().getSourceInfo();
         name = new Name(nameInfo, parseIdentifier());
 
+        // TODO: if type is class, support getter, setter, default, etc blocks
         params = parseFormalParameters();
 
         // Check if a block is accepted as a parameter. Pattern is { ... }
         boolean subParam = false;
         token = peek();
-        if (token.getID() == Token.LBRACE || token.getID() == Token.ELLIPSIS) {
+        if (token.getID() == Token.LBRACE ||
+            token.getID() == Token.ELLIPSIS) {
+            if (type == Token.CLASS) {
+                error("template.substitution.unsupported", token);
+            }
+
             if (token.getID() == Token.ELLIPSIS) {
                 error("template.substitution.lbrace", token);
             }
@@ -285,8 +299,18 @@ public class Parser {
         templateInfo =
             templateInfo.setEndPosition(statementList.getSourceInfo());
 
-        return new Template(templateInfo, name, params, subParam,
+        if (type == Token.TEMPLATE) {
+            return new Template(templateInfo, name, params, subParam,
                             statementList, directiveList);
+        }
+        else if (type == Token.CLASS) {
+            return new TemplateClass(templateInfo, name, params,
+                                     statementList, directiveList);
+        }
+        else {
+            error("template.unsupported.type", typeToken);
+            return null;
+        }
     }
 
     private String parseIdentifier() throws IOException {
@@ -402,7 +426,17 @@ public class Parser {
     }
 
     private Variable parseVariableDeclaration(boolean isStaticallyTyped) throws IOException {
+        Token token = peek();
+        boolean dynamic = false;
+        if (token.getID() == Token.HASH) {
+            read();
+            dynamic = true;
+        }
+
         TypeName typeName = parseTypeName();
+        if (dynamic) {
+            typeName = new DynamicTypeName(typeName);
+        }
 
         SourceInfo info = peek().getSourceInfo();
         String varName = parseIdentifier();
@@ -570,9 +604,6 @@ public class Parser {
                 else {
                     st = new ExpressionStatement(parseExpression(token));
                 }
-                break;
-            case Token.ELLIPSIS:
-                st = new SubstitutionStatement(token.getSourceInfo());
                 break;
 
             case Token.EOF:
@@ -976,6 +1007,76 @@ public class Parser {
         return expr;
     }
 
+    // TODO: spaceship/comparison expression
+    /*
+    parseCompareExpression(token)
+        parseLeft
+        read(SPACESHIP)
+        parseRight
+        new CompareExpression()
+        
+    typeCheck
+        setTYpe(int)
+        if (left is int, float, long, short, byte, double, numeric)
+            if (right is also)
+                strait compare
+            else if (right is object compatible (Number))
+                if object nullable
+                    convert left to Number // TODO: or just handle NPE case?
+                    compareTo
+                else if non-null
+                    convert right to int
+                    strait compare
+            else
+                error incompatible types
+         if left is boolean
+            if (right is also)
+                equal compare only (-1 else)
+            else if (right is Boolean)
+                do conversions
+                compareTo
+            else
+                error incompatible type
+          if left is non-primitive
+              if right is primitive
+                  do above switching left and right
+              else if types compatible and both implement comparable
+                  compareTo
+              else // TODO: or do we invoke toString().compareTo(...)
+                  error incompatible types
+    
+    optimizer
+    
+    
+    generator
+        invoke compareTo, ifeq, iflt, etc and create branches (store 0, 1, -1)
+        if method
+            generate left
+            generate right
+            invokevirtual compareTo
+        else
+            generate left
+            dup
+            generate right
+            swap
+            dup
+            L0
+                ifneq L1
+                pop
+                pop
+                iconst 0
+                goto L3
+            L1
+                iflt L2
+                iconst 1
+                goto L3
+            L2
+                iconst -1
+                goto L3
+            L3
+   
+    */
+    
     private Expression parseRelationalExpression(Token token)
         throws IOException {
 
@@ -1282,6 +1383,23 @@ public class Parser {
         case Token.DOUBLE_HASH:
             return parseNewArrayExpression(token);
 
+        case Token.LBRACE:
+            Token next = peek();
+            Expression lambda;
+            if (next.getID() == Token.RBRACE) {
+                lambda = null;
+            }
+            else {
+                lambda = parseLambda(token);
+            }
+
+            if (lambda == null) {
+                error("factor.empty.braces", info);
+                lambda = new Expression(info);
+            }
+
+            return lambda;
+
         case Token.LPAREN:
             Expression expr;
 
@@ -1322,8 +1440,8 @@ public class Parser {
         case Token.CALL:
             return parseTemplateCallExpression(token);
             
-
-
+        case Token.ELLIPSIS:
+            return parseSubstitutionExpression(token);
 
         case Token.NUMBER:
             if (token.getNumericType() == 0) {
@@ -1394,12 +1512,173 @@ public class Parser {
     private Expression parseNewArrayExpression(Token token)
         throws IOException {
 
+        Name name = null;
+        Token next = peek();
+        if (next.getID() == Token.IDENT) {
+            name = parseName();
+        }
+
+        boolean anonymous = (name == null && next.getID() == Token.LBRACE);
         boolean associative = (token.getID() == Token.DOUBLE_HASH);
 
         SourceInfo info = token.getSourceInfo();
-        ExpressionList list = parseList(Token.LPAREN, Token.RPAREN, associative);
+        ExpressionList list = null;
+        if (name != null || anonymous) {
+            list = parseList(Token.LBRACE, Token.RBRACE, associative);
+        } else {
+            list = parseList(Token.LPAREN, Token.RPAREN, associative);
+        }
+
         info = info.setEndPosition(list.getSourceInfo());
+
+        if (name != null || anonymous) {
+            if (associative) {
+                Expression[] exprs = list.getExpressions();
+                for (int i = 0; i < exprs.length; i += 2) {
+                    if (exprs[i] instanceof StringLiteral) {
+                        continue;
+                    } else if (exprs[i] instanceof VariableRef) {
+                        SourceInfo source = exprs[i].getSourceInfo();
+                        String varname = ((VariableRef) exprs[i]).getName();
+                        exprs[i] = new StringLiteral(source, varname);
+                    } else {
+                        error("newclass.invalid.key", token);
+                    }
+
+                    list = new ExpressionList(list.getSourceInfo(), exprs);
+                }
+            }
+
+            if (anonymous) {
+                return new NewClassExpression(info, list);
+            } else {
+                return new NewClassExpression(info, name, list, associative);
+            }
+        }
+        else {
         return new NewArrayExpression(info, list, associative);
+    }
+    }
+
+    private LambdaExpression parseLambda(Token brace)
+        throws IOException {
+        
+        // Check if a block is being passed in the call.
+        LambdaStatement lambda = null;
+        Vector<Token> lookahead = new Vector<Token>();
+        
+        // retrieve opening brace
+        SourceInfo info = brace.getSourceInfo();
+        
+        // search for a lambda statement: ident,ident ->
+        boolean found = false;
+        
+        while (true) {
+            Token t = read();
+            lookahead.add(t);
+            if (t.getID() == Token.IDENT || t.getID() == Token.COMMA) {
+                continue;
+            }
+            else if (t.getID() == Token.LAMBDA) {
+                found = true;
+                break;
+            }
+            else { break; }
+        }
+
+        // revert expressions and process next
+        for (int i = lookahead.size() - 1; i >= 0; --i) {
+            unread((Token)lookahead.elementAt(i));
+        }
+
+        // parse lamdbda expression
+        if (found) {
+            lambda = parseLambdaStatement();
+        }
+
+        // unread brace to parse block
+        unread(brace);
+
+        // process block
+        Block block = parseBlock();
+        info = info.setEndPosition(block.getSourceInfo());
+
+        // update statement
+        if (lambda != null) {
+            lambda.setBlock(block);
+            block = new LambdaBlock(lambda);
+        }
+        
+        // ensure lambda block
+        LambdaBlock lblock = null;
+        if (block instanceof LambdaBlock) {
+            lblock = (LambdaBlock) block;
+        }
+        else {
+            lblock = new LambdaBlock(block);
+        }
+    
+        // return expr
+        return new LambdaExpression(info, lblock);
+    }
+    
+    private LambdaStatement parseLambdaStatement()
+        throws IOException {
+        SourceInfo info = null;
+        List<VariableRef> vars = new ArrayList<VariableRef>();
+        while (true) {
+            // read either name or type name
+            Token token1 = read();
+            if (token1.getID() != Token.IDENT) {
+                error("function.missing.identifer", token1);
+
+                if (token1.getID() == Token.LAMBDA) { break; }
+                else { continue; }
+            }
+
+            // save info
+            if (info == null) { info = token1.getSourceInfo(); }
+            else { info = info.setEndPosition(token1.getSourceInfo()); }
+            
+            // read next token as either name or next declaration and then
+            // unread first token to allow parsing name/type
+            Token token2 = peek();
+            unread(token1);
+            
+            // if both idents, lookup type and name
+            VariableRef ref = null;
+            if (token2.getID() == Token.IDENT) {
+                // re-read during parsing
+                Variable variable = parseVariableDeclaration(false);
+                ref = new VariableRef(variable.getSourceInfo(), variable.getName());
+                ref.setVariable(variable);
+                
+                // update info
+                info = info.setEndPosition(token2.getSourceInfo());
+            }
+            
+            // otherwise, just use name w/ default type
+            else {
+                Name name = parseName();
+                ref = new VariableRef(name.getSourceInfo(), name.getName());
+            }
+            
+            // add variable ref
+            vars.add(ref);
+
+            // process next token
+            Token next = read();
+            if (next.getID() == Token.COMMA) {
+                continue;
+            }
+            else if (next.getID() == Token.LAMBDA) {
+                break;
+            }
+        }
+
+        return new LambdaStatement(info,
+                                   vars.toArray(new VariableRef[vars.size()]),
+                                   null);
     }
 
     private TemplateCallExpression parseTemplateCallExpression(Token token)
@@ -1420,14 +1699,50 @@ public class Parser {
     private FunctionCallExpression parseFunctionCallExpression(Token token)
         throws IOException {
 
-    	Token next = peek();
-    	if (next.getID() != Token.LPAREN) {
-    		return null;
-    	}
-    	
-    	SourceInfo info = token.getSourceInfo();
-        Name target = new Name(info, token.getStringValue());
+        SourceInfo info = token.getSourceInfo();
 
+        // Search for pattern <ident> {<dot> <ident>} <lparen>
+        Vector<Token> lookahead = new Vector<Token>();
+        StringBuffer name = new StringBuffer(token.getStringValue());
+        Name target = null;
+
+        while (true) {
+            token = read();
+            lookahead.addElement(token);
+
+            if (token.getID() == Token.DOT) {
+                name.append('.');
+                info = info.setEndPosition(token.getSourceInfo());
+            }
+            else if (token.getID() == Token.LPAREN) {
+                target = new Name(info, name.toString());
+                unread(token);
+                break;
+            }
+            else {
+                break;
+            }
+
+            token = read();
+            lookahead.addElement(token);
+
+            if (token.getID() == Token.IDENT) {
+                name.append(token.getStringValue());
+                info = info.setEndPosition(token.getSourceInfo());
+            }
+            else {
+                break;
+            }
+        }
+
+        if (target == null) {
+            // Pattern not found, unread all lookahead tokens.
+            for (int i = lookahead.size() - 1; i >= 0; --i) {
+                unread((Token)lookahead.elementAt(i));
+            }
+            return null;
+        }
+        
         // parse remainder of call expression
         return parseCallExpression(FunctionCallExpression.class, 
                                    null, target, info);
@@ -1443,21 +1758,39 @@ public class Parser {
         info = info.setEndPosition(list.getSourceInfo());
 
         // Check if a block is being passed in the call.
-        Block subParam = null;
+        Expression subParam = null;
         if (peek().getID() == Token.LBRACE) {
-            subParam = parseBlock();
-            info = info.setEndPosition(subParam.getSourceInfo());
+            subParam = parseLambda(read());
         }
-
+        
+        // lookup ctor and invoke
         try {
             return clazz.getConstructor(SourceInfo.class, Expression.class,
                                         Name.class, ExpressionList.class, 
-                                        Block.class)
+                                        LambdaExpression.class)
                         .newInstance(info, expression, target, list, subParam);
         }
         catch (Exception exception) {
             throw new IOException("unable to create ctor", exception);
         }
+    }
+
+    private SubstitutionExpression parseSubstitutionExpression(Token token)
+        throws IOException {
+        
+        // get current source
+        SourceInfo info = token.getSourceInfo();
+        
+        // check if defining params to array
+        Token next = peek();
+        ExpressionList params = null;
+        if (next.getID() == Token.LPAREN) {
+            params = parseList(Token.LPAREN, Token.RPAREN, false);
+            info = info.setEndPosition(params.getSourceInfo());
+        }
+        
+        // return statement
+        return new SubstitutionExpression(info, params);
     }
 
     /** Test program */

@@ -118,7 +118,7 @@ class MessageFormatter {
         }
 
         if (message != null) {
-            return MessageFormat.format(message, new String[] {arg});
+            return MessageFormat.format(message, arg);
         }
         else {
             return key + ": " + arg;

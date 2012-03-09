@@ -34,7 +34,7 @@ public class TemplateCallExpression extends CallExpression {
     public TemplateCallExpression(SourceInfo info, 
                                   Expression expression, Name target,
                                   ExpressionList params,
-                                  Block subParam) {
+                                  LambdaExpression subParam) {
         super(info, expression, target, params, subParam);
     }
 

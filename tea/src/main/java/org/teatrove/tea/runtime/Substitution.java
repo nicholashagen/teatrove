@@ -55,7 +55,18 @@ public interface Substitution {
      *
      * @throws UnsupportedOperationException if this Substitution was detached.
      */
-    public void substitute() throws Exception;
+    public void substitute() 
+        throws Exception;
+
+    /**
+     * Causes the code substitution block to execute against its current
+     * output receiver injecting the specified parameters from a lambda
+     * expression.
+     *
+     * @throws UnsupportedOperationException if this Substitution was detached.
+     */
+    public void substitute(Object... params)
+        throws Exception;
 
     /**
      * Causes the code substitution block to execute against any context.
@@ -63,8 +74,59 @@ public interface Substitution {
      * @throws ClassCastException if context is incompatible with this
      * substitution.
      */
-    public void substitute(Context context) throws Exception;
+    public void substitute(Context context) 
+        throws Exception;
 
+    /**
+     * Causes the code substitution block to execute against any context
+     * injecting the specified parameters from a lambda expression.
+     *
+     * @throws ClassCastException if context is incompatible with this
+     * substitution.
+     */
+    public void substitute(Context context, Object... params) 
+        throws Exception;
+
+    /**
+     * Causes the code substitution block to execute against its current
+     * output receiver returning the last expression.
+     *
+     * @throws UnsupportedOperationException if this Substitution was detached.
+     */
+    public Object rsubstitute() 
+        throws Exception;
+
+    /**
+     * Causes the code substitution block to execute against its current
+     * output receiver injecting the specified parameters from a lambda
+     * expression returning the last expression.
+     *
+     * @throws UnsupportedOperationException if this Substitution was detached.
+     */
+    public Object rsubstitute(Object... params)
+        throws Exception;
+
+    /**
+     * Causes the code substitution block to execute against any contex 
+     * returning the last expressiont.
+     *
+     * @throws ClassCastException if context is incompatible with this
+     * substitution.
+     */
+    public Object rsubstitute(Context context) 
+        throws Exception;
+
+    /**
+     * Causes the code substitution block to execute against any context
+     * injecting the specified parameters from a lambda expression returning 
+     * the last expression.
+     *
+     * @throws ClassCastException if context is incompatible with this
+     * substitution.
+     */
+    public Object rsubstitute(Context context, Object... params) 
+        throws Exception;
+    
     /**
      * Returns an object that uniquely identifies this substitution block.
      */

@@ -100,6 +100,25 @@ public abstract class TreeWalker implements NodeVisitor {
         return null;
     }
         
+    public Object visit(LambdaExpression node) {
+        node.getBlock().accept(this);
+        return null;
+    }
+    
+    public Object visit(LambdaBlock node) {
+        return visit((Block) node);
+    }
+
+    public Object visit(LambdaStatement node) {
+        VariableRef[] vars = node.getVariables();
+        for (int i = 0; i < vars.length; i++) {
+            vars[i].accept(this);
+        }
+
+        node.getBlock().accept(this);
+        return null;
+    }
+
     public Object visit(AssignmentStatement node) {
         node.getLValue().accept(this);
         node.getRValue().accept(this);
@@ -152,10 +171,6 @@ public abstract class TreeWalker implements NodeVisitor {
         return null;
     }
 
-    public Object visit(SubstitutionStatement node) {
-        return null;
-    }
-
     public Object visit(ExpressionStatement node) {
         node.getExpression().accept(this);
         return null;
@@ -190,6 +205,13 @@ public abstract class TreeWalker implements NodeVisitor {
         return null;
     }
 
+    public Object visit(NewClassExpression node) {
+    	Name name = node.getTarget();
+    	if (name != null) { name.accept(this); }
+        node.getExpressionList().accept(this);
+        return null;
+    }
+
     public Object visit(NewArrayExpression node) {
         node.getExpressionList().accept(this);
         return null;
@@ -216,7 +238,7 @@ public abstract class TreeWalker implements NodeVisitor {
             init.accept(this);
         }
 
-        Block subParam = node.getSubstitutionParam();
+        LambdaExpression subParam = node.getSubstitutionParam();
         if (subParam != null) {
             subParam.accept(this);
         }
@@ -303,6 +325,13 @@ public abstract class TreeWalker implements NodeVisitor {
         return null;
     }
 
+    public Object visit(SubstitutionExpression node) {
+        if (node.getParams() != null) {
+            node.getParams().accept(this);
+        }
+        
+        return null;
+    }
     public Object visit(CompareExpression node) {
         node.getLeftExpression().accept(this);
         node.getRightExpression().accept(this);

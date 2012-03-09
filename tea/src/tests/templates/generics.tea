@@ -1,0 +1,18 @@
+<% template generics(String name, List<List<Integer[]>> numbers, Map<String, List<String>> states)
+
+'Hello World: ' name '\n'
+
+if (numbers != null) {
+    foreach (a in numbers) {
+        foreach (b in a) {
+            foreach (c in b) {
+                'Number: ' c '\n'
+            }
+        }
+    }
+}
+
+state = states['test']
+foreach (s in state) {
+    'State: ' s '\n'
+}

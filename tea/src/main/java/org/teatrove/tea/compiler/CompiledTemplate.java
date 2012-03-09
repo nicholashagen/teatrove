@@ -17,7 +17,6 @@
 package org.teatrove.tea.compiler;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.io.Reader;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -227,17 +226,8 @@ public class CompiledTemplate extends CompilationUnit {
     /**
      * Delegate to calling template.
      */
-    public OutputStream getOutputStream() throws IOException {
-        return mCaller != null ? mCaller.getOutputStream() : null;
-    }
-
-    /**
-     * Delegate to calling template.
-     */
-    public void resetOutputStream() {
-        if (mCaller != null) {
-            mCaller.resetOutputStream();
-        }
+    public CodeOutput getOutput() throws IOException {
+        return mCaller != null ? mCaller.getOutput() : null;
     }
 
     /**

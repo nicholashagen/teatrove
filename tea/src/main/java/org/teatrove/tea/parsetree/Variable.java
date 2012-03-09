@@ -36,10 +36,14 @@ public class Variable extends Node {
     private TypeName mTypeName;
     private Type mType;
 
+    private int mDeclarations;
+    
     private boolean mField;
     private boolean mStatic;
     private boolean mTransient;
     private boolean mStaticallyTyped;
+    
+    private Variable mDelegate;
 
     /**
      * Used for variable declarations.
@@ -84,6 +88,19 @@ public class Variable extends Node {
         return visitor.visit(this);
     }
 
+    public Object clone() {
+        Variable var = (Variable) super.clone();
+        var.mDeclarations = this.mDeclarations;
+        var.mField = this.mField;
+        var.mName = this.mName;
+        var.mStatic = this.mStatic;
+        var.mStaticallyTyped = this.mStaticallyTyped;
+        var.mTransient = this.mTransient;
+        var.mType = this.mType;
+        var.mTypeName = this.mTypeName;
+        return var;
+    }
+    
     public TypeName getTypeName() {
         return mTypeName;
     }
@@ -107,7 +124,11 @@ public class Variable extends Node {
         mType = Type.preserveType(mType, type);
         if (mTypeName == null) {
             mTypeName = createTypeName(getSourceInfo(), type);
-        } else {
+        }
+//        else if (type == null && mTypeName instanceof DynamicTypeName) {
+            // do nothing
+//        }
+        else {
             mTypeName = createTypeName(mTypeName.getSourceInfo(), type);
             // TODO: do we need to check which is better for generics?
             // - if type has generics, createTypeName
@@ -164,8 +185,43 @@ public class Variable extends Node {
         mTransient = b;
     }
 
+    public boolean isDelegate() {
+        return mDelegate != null;
+    }
+    
+    public Variable getDelegate() {
+        return mDelegate;
+    }
+    
+    public void setDelegate(Variable variable) {
+        mDelegate = variable;
+    }
+    
+    public Variable createDelegate() {
+        Variable var = (Variable) clone();
+        var.setDelegate(this);
+        return var;
+    }
+    
+    public boolean isFinal() {
+        return getDeclarations() <= 1;
+    }
+    
+    public int getDeclarations() {
+        return (mDelegate == null ? mDeclarations : mDelegate.getDeclarations());
+    }
+
+    public void declareVariable() {
+        if (mDelegate == null) {
+            mDeclarations++;
+        }
+        else {
+            mDelegate.declareVariable(); 
+        }
+    }
+    
     public int hashCode() {
-        return mName.hashCode() + mTypeName.hashCode();
+        return mName.hashCode(); // TODO + mTypeName.hashCode();
     }
 
     /**
@@ -175,7 +231,7 @@ public class Variable extends Node {
     public boolean equals(Object other) {
         if (other instanceof Variable) {
             Variable v = (Variable)other;
-            return mName.equals(v.mName) && mTypeName.equals(v.mTypeName);
+            return mName.equals(v.mName); // TODO && mTypeName.equals(v.mTypeName);
         }
         else {
             return false;

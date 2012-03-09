@@ -1,0 +1,19 @@
+<% template objects(String name, Integer age, Boolean valid)
+
+// TODO: support name : name rather than name, name and name => name
+
+data = ##{ name, name, age, age, valid, valid, group, 'World' }
+'Name: ' data.name '\n'
+'Age: ' data.age '\n'
+'Valid: ' data.valid '\n'
+'Group: ' data.group '\n'
+
+object = ##util.object{ name, name, contacts, ##('user1', #('555-1212')) }
+'Name: ' object.name '\n'
+foreach (contact in object.contacts['user1']) {
+    'Contact: ' contact '\n'
+}
+'Value: ' object '\n'
+
+subobject = call util.subobject(object)
+'Name: ' subobject.user '\n'

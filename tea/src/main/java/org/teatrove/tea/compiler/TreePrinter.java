@@ -111,6 +111,13 @@ public class TreePrinter extends CodeGenerator {
         w.flush();
     }
 
+    public void writeTo(CodeOutput out) throws IOException {
+        OutputStream output = out.getOutputStream();
+        writeTo(output);
+        output.flush();
+        output.close();
+    }
+
     /**
      * Converts any node to a String.
      */
@@ -274,7 +281,31 @@ public class TreePrinter extends CodeGenerator {
         public Object visit(Statement node) {
             return null;
         }
+
+        public Object visit(LambdaExpression node) {
+            node.getBlock().accept(this);
+            return null;
+        }
         
+        public Object visit(LambdaBlock node) {
+            print("{ ");
+            visit((Block) node);
+            print(" }");
+            return null;
+        }
+        
+        public Object visit(LambdaStatement node) {
+            VariableRef[] vars = node.getVariables();
+            for (int i = 0; i < vars.length; i++) {
+                if (i > 0) { print(", "); }
+                print(vars[i].getName());
+            }
+
+            print(" -> ");
+            node.getBlock().accept(this);
+            return null;
+        }
+
         public Object visit(ImportDirective node) {
             return null;
         }
@@ -365,11 +396,6 @@ public class TreePrinter extends CodeGenerator {
             return null;
         }
 
-        public Object visit(SubstitutionStatement node) {
-            print("...");
-            return null;
-        }
-
         public Object visit(ExpressionStatement node) {
             node.getExpression().accept(this);
             return null;
@@ -418,6 +444,23 @@ public class TreePrinter extends CodeGenerator {
             return null;
         }
 
+        public Object visit(NewClassExpression node) {
+            if (node.isAssociative()) {
+                print("##");
+                print(node.getTarget().getName());
+                print("(");
+            }
+            else {
+                print("#");
+                print(node.getTarget().getName());
+                print("(");
+            }
+            node.getExpressionList().accept(this);
+            print(")");
+
+            return null;
+        }
+
         public Object visit(NewArrayExpression node) {
             if (node.isAssociative()) {
                 print("##(");
@@ -441,12 +484,18 @@ public class TreePrinter extends CodeGenerator {
         }
 
         private Object visit(CallExpression node) {
+            Expression expr = node.getExpression();
+            if (expr != null) {
+                expr.accept(this);
+                print(".");
+            }
+            
             node.getTarget().accept(this);
             print("(");
             node.getParams().accept(this);
             print(")");
         
-            Statement subParam = node.getSubstitutionParam();
+            LambdaExpression subParam = node.getSubstitutionParam();
             if (subParam != null) {
                 print(" ");
                 subParam.accept(this);
@@ -588,6 +637,18 @@ public class TreePrinter extends CodeGenerator {
             return null;
         }
         
+        public Object visit(SubstitutionExpression node) {
+            print("...");
+            if (node.getParams() != null) {
+                print("(");
+                for (Expression expr : node.getParams().getExpressions()) {
+                    expr.accept(this);
+                    print(",");
+                }
+                print(")");
+            }
+            return null;
+        }
         public Object visit(CompareExpression node) {
             node.getLeftExpression().accept(this);
             print(" <=> ");

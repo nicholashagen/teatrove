@@ -96,13 +96,50 @@ public class StringCompiler extends Compiler {
             String source = (String)mTemplateSources.get(getName());
             return new StringReader(source);
         }
+        
+        protected String getClassName(String innerClass) {
+            String className = getName();
+            String pack = getTargetPackage();
+            if (pack != null && pack.length() > 0) {
+                className = pack + '.' + className;
+            }
+            
+            if (innerClass != null) {
+                className = className + '$' + innerClass;
+            }
 
-        public OutputStream getOutputStream() throws IOException {
-            return mInjector.getStream(getClassName());
+            return className;
         }
 
-        public void resetOutputStream() {
-            mInjector.resetStream(getClassName());
+        public CodeOutput getOutput() throws IOException {
+            return new CodeOutput() {
+                public OutputStream getOutputStream()
+                    throws IOException {
+
+                    return getOutputStream(null);
+                }
+                
+                public OutputStream getOutputStream(String innerClass)
+                    throws IOException {
+
+                    this.addInnerClass(innerClass);
+                    return mInjector.getStream(getClassName(innerClass));
+                }
+                
+                public void resetOutputStream() {
+                    resetOutputStream(null);
+                }
+                
+                public void resetOutputStream(String innerClass) {
+                    mInjector.resetStream(getClassName(innerClass));
+                }
+                
+                public void resetOutputStreams() {
+                    for (String innerClass : this.getInnerClasses()) {
+                        this.resetOutputStream(innerClass);
+                    }
+                }
+            };
         }
     }
 }

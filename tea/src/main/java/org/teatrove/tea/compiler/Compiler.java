@@ -18,7 +18,6 @@ package org.teatrove.tea.compiler;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.io.Reader;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -626,34 +625,19 @@ public abstract class Compiler {
             // the code generate option is enabled.
 
             if (unit.getErrorCount() == 0 && mGenerateCode) {
-                OutputStream out = null;
+                CodeOutput out = null;
                 try {
-                    out = unit.getOutputStream();
+                    out = unit.getOutput();
                     if (out != null) {
                         tree = (Template)new BasicOptimizer(tree).optimize();
                         mParseTreeMap.put(name, tree);
 
                         CodeGenerator codegen = createCodeGenerator(unit);
                         codegen.writeTo(out);
-                        out.flush();
-                        out.close();
                     }
                 } catch (Throwable e) {
-                    // attempt to close stream
-                    // NOTE: we must call this here as well as in the try block
-                    //       above rather than solely in a finally block since
-                    //       the unit.resetOutputStream expects the stream to
-                    //       already be closed.  For example, if the unit uses
-                    //       ClassInjector.getStream, then close must be called
-                    //       on that stream to ensure it is defined so that
-                    //       the reset method can undefine it.
-                    if (out != null) {
-                        try { out.close(); }
-                        catch (Throwable err) { uncaughtException(err); }
-                    }
-
                     // reset the output stream
-                    unit.resetOutputStream();
+                    out.resetOutputStream();
 
                     // output error
                     uncaughtException(e);

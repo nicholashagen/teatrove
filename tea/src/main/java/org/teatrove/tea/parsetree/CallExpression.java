@@ -29,14 +29,14 @@ public abstract class CallExpression extends Expression implements NullSafe {
     private Name mTarget;
     private ExpressionList mParams;
     private Statement mInitializer;
-    private Block mSubParam;
+    private LambdaExpression mSubParam;
     private boolean mVoidPermitted;
     private boolean mNullSafe;
 
     public CallExpression(SourceInfo info, 
                           Expression expression, Name target,
                           ExpressionList params,
-                          Block subParam) {
+                          LambdaExpression subParam) {
         super(info);
 
         mExpression = expression;
@@ -52,7 +52,7 @@ public abstract class CallExpression extends Expression implements NullSafe {
             ce.mInitializer = (Statement)mInitializer.clone();
         }
         if (mSubParam != null) {
-            ce.mSubParam = (Block)mSubParam.clone();
+            ce.mSubParam = (LambdaExpression)mSubParam.clone();
         }
         return ce;
     }
@@ -90,7 +90,11 @@ public abstract class CallExpression extends Expression implements NullSafe {
         return mInitializer;
     }
 
-    public Block getSubstitutionParam() {
+    /**
+     * Returns the statement of a substitution param...usually either a block
+     * or statement list.
+     */
+    public LambdaExpression getSubstitutionParam() {
         return mSubParam;
     }
 
@@ -110,7 +114,7 @@ public abstract class CallExpression extends Expression implements NullSafe {
         mInitializer = stmt;
     }
 
-    public void setSubstitutionParam(Block subParam) {
+    public void setSubstitutionParam(LambdaExpression subParam) {
         mSubParam = subParam;
     }
 

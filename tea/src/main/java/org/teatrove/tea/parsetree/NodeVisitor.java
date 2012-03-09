@@ -54,10 +54,12 @@ public interface NodeVisitor {
     public Object visit(Statement node);
     public Object visit(StatementList node);
     public Object visit(Block node);
+    public Object visit(LambdaBlock node);
+    public Object visit(LambdaStatement node);
+    public Object visit(LambdaExpression node);
     public Object visit(AssignmentStatement node);
     public Object visit(ForeachStatement node);
     public Object visit(IfStatement node);
-    public Object visit(SubstitutionStatement node);
     public Object visit(ExpressionStatement node);
     public Object visit(ReturnStatement node);
     public Object visit(ExceptionGuardStatement node);
@@ -66,6 +68,7 @@ public interface NodeVisitor {
 
     public Object visit(Expression node);
     public Object visit(ParenExpression node);
+    public Object visit(NewClassExpression node);
     public Object visit(NewArrayExpression node);
     public Object visit(FunctionCallExpression node);
     public Object visit(TemplateCallExpression node);
@@ -80,6 +83,7 @@ public interface NodeVisitor {
     public Object visit(AndExpression node);
     public Object visit(OrExpression node);
     public Object visit(TernaryExpression node);
+    public Object visit(SubstitutionExpression node);
     public Object visit(CompareExpression node);
     public Object visit(NoOpExpression node);
     public Object visit(SpreadExpression node);

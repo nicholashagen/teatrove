@@ -577,17 +577,30 @@ public class FileCompiler extends AbstractFileCompiler {
             return mDestFile;
         }
 
-        public OutputStream getOutputStream() throws IOException {
-            OutputStream out1 = null;
-            OutputStream out2 = null;
+        public CodeOutput getOutput() throws IOException {
+            return new CodeOutput() {
+                public OutputStream getOutputStream()
+                    throws IOException {
 
-            if (mDestFile != null) {
-                File dir = mDestFile.getParentFile();
-                if (!dir.exists()) {
-                    dir.mkdirs();
+                    return getOutputStream(null);
                 }
-                out1 = new FileOutputStream(mDestFile);
-            }
+
+                public OutputStream getOutputStream(String innerClass)
+                    throws IOException {
+
+                    OutputStream out1 = null;
+                    OutputStream out2 = null;
+
+                    this.addInnerClass(innerClass);
+                    
+                    File dest = getDestinationFile(innerClass);
+                    if (dest != null) {
+                        File dir = dest.getParentFile();
+                        if (!dir.exists()) {
+                            dir.mkdirs();
+                        }
+                        out1 = new FileOutputStream(dest);
+                    }
 
             if (mInjector != null) {
                 out2 = mInjector.getStream(getClassName());
@@ -616,16 +629,30 @@ public class FileCompiler extends AbstractFileCompiler {
             return new BufferedOutputStream(out);
         }
         
-        public void resetOutputStream() {
-            if (mDestFile != null) {
-                mDestFile.delete();
-            }
+                public void resetOutputStream() {
+                    resetOutputStream(null);
+                }
 
-            if (mInjector != null) {
-                mInjector.resetStream(getClassName());
-            }
+                @Override
+                public void resetOutputStream(String innerClass) {
+                    File destFile = getDestinationFile(innerClass);
+                    if (destFile != null) {
+                        destFile.delete();
+                    }
+
+                    if (mInjector != null) {
+                        mInjector.resetStream(getClassName(innerClass));
+                    }
+                }
+
+                @Override
+                public void resetOutputStreams() {
+                    for (String innerClass : this.getInnerClasses()) {
+                        this.resetOutputStream(innerClass);
+                    }
+                }
+            };
         }
-    }
     
     public class Unit extends FileUnit {
         

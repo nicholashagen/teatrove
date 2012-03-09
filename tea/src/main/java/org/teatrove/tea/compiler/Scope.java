@@ -39,6 +39,10 @@ public class Scope {
     private Map<Variable, Variable> mVariables;
     private Scope mParent;
     private Collection<Scope> mChildren;
+
+    // State of whether variables should delegate to other variables in
+    // parent scopes.
+    private boolean mDelegating;
     
     // Set of private Variables declared in this scope.
     private Set<Variable> mPrivateVars;
@@ -52,18 +56,28 @@ public class Scope {
         new ArrayList<VariableRef>();
     
     public Scope() {
-        this(null);
+        this(null, false);
     }
     
     public Scope(Scope parent) {
-        if ((mParent = parent) != null) {
-            mVariables = parent.mVariables;
+        this(parent, false);
+    }
+    
+    public Scope(Scope parent, boolean delegating) {
+        mParent = parent;
+        mDelegating = delegating;
+        if (mParent != null) {
+            if (!mDelegating) {
+                mVariables = parent.mVariables;
+            }
+
             if (parent.mChildren == null) {
                 parent.mChildren = new ArrayList<Scope>(5);
             }
             parent.mChildren.add(this);
         }
-        else {
+        
+        if (mVariables == null) {
             mVariables = new HashMap<Variable, Variable>(53);
         }
     }
@@ -106,6 +120,13 @@ public class Scope {
      * scope during an intersection or promotion
      */
     public Variable declareVariable(Variable var, boolean isPrivate) {
+        if (mDelegating && mParent != null) {
+            Variable delegate = mParent.getDeclaredVariable(var.getName());
+            if (delegate != null) {
+                var = delegate.createDelegate();
+            }
+        }
+        
         if (mVariables.containsKey(var)) {
             var = mVariables.get(var);
         }

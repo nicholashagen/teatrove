@@ -1,0 +1,100 @@
+<% template substitution(String param)
+
+/*
+// TEST WITHOUT CONTEXT
+call util.frame() { 'BLAH\n' }
+
+// TEST WITHOUT ANY VARIABLES
+call util.frame() {
+    test1 = 'blah'
+    'HELLO 1: ' test1 '\n'
+}
+
+// TEST WITH QUERY PARAM
+call util.frame() {
+    test2 = param
+    'HELLO 2: ' test2 '\n'
+}
+
+// TEST WITH FINAL VARS
+test3 = 'TEST3-' & param
+call util.frame() {
+    'HELLO 3: ' test3 '\n'
+}
+
+// TEST WITH INTERNAL VARS
+test4 = 'TEST4-' & param
+call util.frame() {
+    test4 = 'MOD-' & test4
+    'HELLO 4: ' test4 '\n'
+}
+'BYE 4: ' test4 '\n'
+
+// TEST WITH NON-FINAL VARS
+test5 = 'TEST5-'
+if (param != null) { test5 = test5 & 'param' }
+call util.frame() {
+    'HELLO 5: ' test5 '\n'
+}
+
+test5 = null
+
+// TEST WITH DIFFERENT SCOPE
+call util.frame() {
+    test6 = 'testing'
+    'HELLO 6: ' test6 '\n'
+}
+
+test6 = 'blah'
+
+// TEST WITH ASSIGNABLE BLOCK
+test7a = param
+test7a = test7a & 'BLAH'
+test7 = {
+    'HELLO 7: ' test7a '\n'
+}
+test7a = test7a & '-NEXT'
+
+//test7
+//test7()
+// TODO: testMethod(test7)
+call util.frame(test7)
+
+// TEST WITH ASSIGNABLE BLOCK AND LAMBDAS
+test8 = { Map opts -> 'OPTS: ' & opts['page'] & '\n' }
+test8(##('page' : 'Testing'))
+//call util.frame(test8)
+//testMethod(test8)
+*/
+
+//a = fork(#({ 'TEST1' }))
+//a.findMap()['TEST']
+//a.findObjects()[0].toString()
+//a.findResult(5)
+
+// fork(#({ 'TEST1' }, { 'TEST2' })).findResult(5)
+
+a = { 'TEST1' }
+b = { 'TEST2' }
+fork(#(a, b)).join(5000) { nhl, nba ->
+    '<games><nhl>' nhl '</nhl><nba>' nba '</nba></games>' 
+}
+
+/*
+sports = #('nhl', 'nba', 'mlb')
+
+promise = createPromise();
+foreach (sport in sports) {
+    defer(promise) {
+        readURLCache('/' & sport & '/feed') }
+    }
+}
+
+await(promise, 10000) { Object[] results ->
+    foreach (result in results) {
+        'RESULT: ' result
+    }
+}
+*/
+
+'VALID'

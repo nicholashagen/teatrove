@@ -1,0 +1,17 @@
+<% template minimum(Object[] array) { ... }
+
+min = null as Integer
+foreach (obj in array) {
+    val = ...(obj)
+    if (val != null and val isa Integer) {
+    
+        // TODO: if do not not assign min to tmp and compare against tmp
+        // then min gets confused with the local variable of min and evals
+        // against null since it never gets properly set
+        tmp = min
+        if (tmp == null) { min = val }
+        else if (val < tmp) { min = val }
+    }
+}
+
+min 

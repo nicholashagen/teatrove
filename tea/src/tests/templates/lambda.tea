@@ -1,0 +1,233 @@
+<% template lambda()
+
+/*
+
+template.execute(...)
+    x = 5
+    y = 6
+    new template.sub$1
+    sub$1.substitute()
+
+- if no shared variables, just use static execute
+- else, new instance, invoke 
+
+- if no shared variables, just use static instances
+- else
+    - if no vars change (all vars assignment count = 0), use static execute and pass vals into inner ctor
+    - else, create non-static instance and use inner class access to parent fields
+
+JavaClassGenerator:
+
+visit(Template)
+    - generateTemplateParamNames()
+    - generateExecute()
+        - if no sub blocks
+            - generate(node)
+        - eles if no shared variables (no shared vars in any closure)
+            - generate(node)
+        - else if all shared variables final (no shared vars as field or decl > 0)
+            - generate(node)
+        - else
+            - new class
+            - invoke ctor
+            - invoke _execute(...)
+            - return
+            - create _execute
+            - generate(node) 
+
+visit(ClosureExpression)
+    - generateInnerClass()
+        - generate sub methods
+        - if no shared vars
+            - generate ctor() w/ static class
+            - add static field to outer class
+            - create instance
+        - else if all shared variables final (not marked as field and decl < 2)
+            - generate ctor(list of vars) w/ static class
+        - else
+            - generate ctor(outerclass, list of vars) w/ inner class
+    - generateInstance
+        - if closure static field
+            - load closure static
+        - else if closure class static
+            - new instance passing in local vars
+        - else
+            - new instance passing in this and local vars
+        
+visit(CallExpression)
+    - if subParam
+        - visit(ClosureExpression)
+    - else if function is closure
+        - visit(ClosureExpression)
+        - invoke rsub
+
+
+TypeChecker:
+
+visit(AssignmentStatement)
+    - incr var ref assigned
+    - set scope
+    - if field is scoped to closure and declarations > 0
+        - set as field
+
+visit(ClosureExpression)
+    - foreach promotoed
+        - if declarations > 0, set as field
+    - foreach out of scope
+        - if declarations > 0, set as field
+    - save shared vars
+    - template add shared vars or add closure
+
+
+1. a.tea : call b() { ... }
+   b.tea : ...
+   
+2. a.tea : x = { ... }
+           x()
+           
+b. a.tea : return { }
+   b.tea : (call a())()
+
+TODO:
+- LambdaStatement into LambdaExpressions (assignable lambdas)
+    - every { } statement is a ClosureExpression w/ an optional LambdaStatement
+    - call xyz() { } creates CallExpression with ClosureExpression param
+    - a = { } creates AssignmentStatement with ClosureExpression
+    - visit(ClosureExpression)
+        - define anon inner class implements Substitution
+            - rsubstitute does block
+            - lambda uses params
+            - add checks for exceptions (type checker and class generator) 
+        - new anon inner class
+        - use class variables of template for shared vars
+    - visit(CallExpression)
+        - if param isa Variable
+            - ensure Substitution
+        - else if Block, LambdaStatement, etc
+            - new anon inner class
+        - sub.rsub
+    - visit(FunctionExpr)
+        - if name isa var
+            - ensure Substitution
+            - rsubstitute(...)
+        - else
+            - invoke
+        
+class template extends Template
+    void execute() {
+        x = new template$sub$0()
+        util.frame.execute(x)
+    }
+    
+    class template$sub$0 implements Substitution {
+        Object rsub(Object[]) {
+            return "world";
+        }
+        
+        String toString() {
+            sub();
+        }
+    }
+}
+
+OR
+
+- visit(ClosureExpression)
+    - define new SubId and block
+    - if assignment, store subId
+    - else, execute subId
+- visit(CallExpression)
+    - if (var)
+        - load sub id
+        - store blockId = subId
+        - execute
+    - else
+        - store blockId = next
+        - execute
+- visit(FunctionExpr)
+    - if name isa var
+        - load sub id
+        - store block id
+        - execute
+    - else
+        - invoke
+*/
+
+/*
+
+///// TEST
+
+name('John Doe') { first, last -> 'First: ' first ', Last: ' last }
+
+///// TEST
+
+ctime = currentDate().time
+array = #(createDate(ctime + 1000), createDate(ctime - 90000), createDate(ctime + 500))
+x = sort(array) { Date a, Date b -> a.time < b.time ? -1 : a.time > b.time ? 1 : 0 }
+'\n'
+foreach (a in array) {
+    a.time '\n'
+}
+
+///// TEST
+
+call util.substitute() { 'TEST' }
+
+///// TEST
+
+g = #('test', 'blah', '', 'info')
+eachWithIndex(g) { int idx, String item ->
+    'ITEM ' idx ': '
+    if (item.length == 0) { 'EMPTY' }
+    else { item }
+    '\n'
+}
+
+*/
+
+///// TEST
+
+test = 5
+call util.frame() { Map options -> 'Page: ' options['page'] ' - ' test '\n' }
+
+/*
+
+///// TEST
+
+// TODO: for some reason, there are some oddities in minimum
+e1 = #(##('int', 5), ##('int', 6), ##('int', 3), ##('int', 9))
+e = call util.minimum(e1) { Map element -> element['int'] }
+'E: ' e '\n'
+
+*/
+
+/*
+
+///// TEST
+
+call each(f) { Date it -> 'F: ' it.time }
+
+*/
+
+/*
+
+///// TEST
+
+c = { it -> it.name }
+sort(users, c)
+a = longest(users, c)
+
+d = { name -> 'Hello: ' name '\n' }
+d('blah')
+
+f = a ? { 'Test Junior' } : { 'Test Senior' }
+f
+
+///// TEST
+
+call util.leaders(game) { #util.player p1, #util.player p2 ->
+    'Player 1: ' p1.name ', ' p1.points '\n'
+    'Player 1: ' p2.name ', ' p2.points '\n'
+}
+
+*/

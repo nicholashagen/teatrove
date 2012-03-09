@@ -28,12 +28,13 @@ import java.lang.reflect.Method;
 public class FunctionCallExpression extends CallExpression {
     private static final long serialVersionUID = 1L;
 
+    private Object mCaller;
     private Method mCalledMethod;
 
     public FunctionCallExpression(SourceInfo info, 
                                   Expression expression, Name target,
                                   ExpressionList params,
-                                  Block subParam) {
+                                  LambdaExpression subParam) {
         super(info, expression, target, params, subParam);
     }
 
@@ -51,5 +52,13 @@ public class FunctionCallExpression extends CallExpression {
 
     public void setCalledMethod(Method m) {
         mCalledMethod = m;
+    }
+    
+    public Object getCaller() {
+        return mCaller;
+    }
+    
+    public void setCaller(Object caller) {
+        mCaller = caller;
     }
 }

@@ -1,13 +1,11 @@
 package org.teatrove.teaadmin.viewer;
 
-import java.io.BufferedInputStream;
+import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.Reader;
 import java.io.StringReader;
 import java.lang.reflect.Method;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -19,12 +17,13 @@ import java.util.TreeSet;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 
+import org.teatrove.tea.compiler.CompilationUnit;
 import org.teatrove.tea.compiler.Parser;
 import org.teatrove.tea.compiler.Scanner;
 import org.teatrove.tea.compiler.TemplateRepository;
 import org.teatrove.tea.compiler.TemplateRepository.TemplateInfo;
-import org.teatrove.teaservlet.AdminApp;
-import org.teatrove.teaservlet.AppAdminLinks;
+import org.teatrove.tea.engine.TemplateCompilationResults;
+import org.teatrove.teaservlet.Application;
 import org.teatrove.teaservlet.ApplicationConfig;
 import org.teatrove.teaservlet.ApplicationRequest;
 import org.teatrove.teaservlet.ApplicationResponse;
@@ -51,7 +50,7 @@ on click of dot property (open type)
 
 */
 
-public class TemplateViewerApplication implements AdminApp
+public class TemplateViewerApplication implements Application
 {
     private Log log;
     private int maxCache;
@@ -59,6 +58,7 @@ public class TemplateViewerApplication implements AdminApp
     private boolean initialized;
     private TeaServletAdmin admin;
     private ApplicationConfig config;
+    private TeaServletEngine engine;
 
     private Map<String, TemplateView> cache =
         new HashMap<String, TemplateView>();
@@ -79,7 +79,7 @@ public class TemplateViewerApplication implements AdminApp
         this.config = conf;
         this.log = conf.getLog();
         this.maxCache = conf.getProperties().getInt("maxCache", 100);
-
+        
         String tmp = conf.getProperties().getString("template.path");
         if (tmp != null) { 
             this.paths = tmp.split("[;,]");
@@ -97,14 +97,6 @@ public class TemplateViewerApplication implements AdminApp
     public void destroy()
     {
         // nothing to do
-    }
-
-    @Override
-    public AppAdminLinks getAdminLinks()
-    {
-        AppAdminLinks links = new AppAdminLinks("Template Viewer");
-        links.addAdminLink("Viewer", "system.viewer.index");
-        return links;
     }
 
     @Override
@@ -153,14 +145,13 @@ public class TemplateViewerApplication implements AdminApp
 
             // get tea servlet engine
             method.setAccessible(true);
-            TeaServletEngine engine = (TeaServletEngine) method.invoke(servlet);
+            this.engine = (TeaServletEngine) method.invoke(servlet);
 
             // create a new administration and paths
             this.admin = new TeaServletAdmin(engine);
             if (this.paths == null || this.paths.length == 0)
             {
                 this.paths = this.admin.getTemplatePaths();
-                System.out.println("TEMPLATE PATHS: " + Arrays.toString(this.paths));
             }
 
             // mark initialized
@@ -340,11 +331,13 @@ public class TemplateViewerApplication implements AdminApp
             sourceMap.clear();
         }
 
-        public void resetTemplateView(String name)
+        public boolean resetTemplateView(String name)
         {
-            cache.remove(name);
+            name = name.replace("/", ".");
+            TemplateView view = cache.remove(name);
             TemplateSource source = sourceMap.remove(name);
             if (source != null) { sourceList.remove(source); }
+            return (view == null ? false : true);
         }
 
         public TemplateView getTemplateView(String parent, String name)
@@ -353,6 +346,10 @@ public class TemplateViewerApplication implements AdminApp
             // verify template
             if (name == null) { throw new IllegalArgumentException("name"); }
 
+            // ensure format
+            name = name.replace("/", ".");
+            if (parent != null) { parent = parent.replace("/", "."); }
+            
             // find actual path based on parent and template
             String path = null;
             TemplateInfo template = null;
@@ -367,11 +364,6 @@ public class TemplateViewerApplication implements AdminApp
             {
                 path = name;
                 template = repo.getTemplateInfo(name);
-            }
-
-            if (template == null)
-            {
-                throw new IllegalArgumentException("template not found");
             }
 
             // check cache
@@ -416,7 +408,7 @@ public class TemplateViewerApplication implements AdminApp
             return view;
         }
 
-        protected StringBuilder readInputStream(InputStream input) 
+        protected StringBuilder read(Reader input) 
             throws IOException {
             
             StringBuilder buffer = new StringBuilder(65535);
@@ -435,7 +427,7 @@ public class TemplateViewerApplication implements AdminApp
             throws Exception
         {
             // search for valid stream
-            InputStream input = this.findTemplate(view, view.getSimpleName());
+            Reader input = this.findTemplate(view, view.getSimpleName());
             
             // build and return output
             try { this.processTemplate(view, input); }
@@ -443,15 +435,17 @@ public class TemplateViewerApplication implements AdminApp
 
             // build call hierarchy
             TemplateRepository repo = TemplateRepository.getInstance();
-            for (TemplateInfo info : TemplateRepository.getInstance().getCallers(view.getSimpleName()))
+            for (TemplateInfo info : repo.getCallers(view.getSimpleName()))
             {
                 TemplateInfo callerTemplate =
                     repo.getTemplateInfo(info.getShortName());
-                TemplateView callerView =
-                    new TemplateView(info.getShortName(), callerTemplate);
+                
+                String tname = info.getShortName().replace("/", "."); 
+                TemplateView callerView = 
+                    new TemplateView(tname, callerTemplate );
 
                 // search for valid stream
-                InputStream callerInput =
+                Reader callerInput =
                     this.findTemplate(callerView, callerView.getSimpleName());
                 
                 // build and return output
@@ -462,7 +456,9 @@ public class TemplateViewerApplication implements AdminApp
                 {
                     if (callee.getName().equals(view.getSimpleName()))
                     {
-                        view.addCaller(new TemplateView.Caller(info.getShortName(), callee.getLine()));
+                        view.addCaller(
+                            new TemplateView.Caller(tname, callee.getLine())
+                        );
                     }
                 }
             }
@@ -477,9 +473,19 @@ public class TemplateViewerApplication implements AdminApp
             else { return null; }
         }
 
-        protected InputStream findTemplate(TemplateView view, String name)
-            throws FileNotFoundException
+        protected Reader findTemplate(TemplateView view, String name)
+            throws Exception
         {
+            name = name.replace("/", ".");
+            TemplateCompilationResults results =
+                engine.getTemplateSource().checkTemplates(null, true, name);
+            CompilationUnit unit = results.getReloadedTemplate(name);
+            if (unit == null) {
+                throw new FileNotFoundException(name);
+            }
+            
+            return new BufferedReader(unit.getReader());
+            /*
             String template = name.replace('.', '/') + ".tea";
             if (!template.startsWith("/")) { 
                 template = "/".concat(template);
@@ -521,15 +527,16 @@ public class TemplateViewerApplication implements AdminApp
             }
 
             return new BufferedInputStream(input);
+            */
         }
 
-        protected void processTemplate(TemplateView view, InputStream input)
+        protected void processTemplate(TemplateView view, Reader input)
             throws Exception {
             
             // walk the source tree injecting tags onto keywords,
             // setting up newline boundaries, adding callee info, and cleaning
             // the source code
-            StringBuilder buffer = readInputStream(input);
+            StringBuilder buffer = read(input);
             StringReader reader = new StringReader(buffer.toString());
             Scanner scanner = new Scanner(new SourceReader(reader, "<%", "%>"));
             Parser parser = new Parser(scanner);

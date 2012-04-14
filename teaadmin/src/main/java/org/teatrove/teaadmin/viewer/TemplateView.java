@@ -79,7 +79,10 @@ public class TemplateView implements Comparable<TemplateView>
 
     private void initialize()
     {
-        this.name = this.template.getShortName();
+        this.name = 
+            (this.template == null ? this.simpleName.replace(".", "/") 
+                                   : this.template.getShortName());
+        
         this.parents = this.name.split("/");
         this.parent = (this.parents.length <= 1 ? "/" :
                        this.name.substring(0, this.name.lastIndexOf('/')));

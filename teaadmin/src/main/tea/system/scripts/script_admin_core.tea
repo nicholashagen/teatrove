@@ -433,8 +433,25 @@
             }
         });
         
+        $('#button-reset').click(function() {
+            $.post('<% pathPrefix %>system/viewer/reset', { 
+                       reset: true, name: $(this).data('template') 
+                   },
+                   function() { location.reload(); });
+        });
+        
         $('#template-viewer .template .call a').live('click', function (evt) {
-            location.href = '?page=viewer&name=' + $(this).text();
+            var parent = '';
+            var href = location.href;
+            var idx = href.indexOf('&name=');
+            if (idx > 0) {
+                var lidx = href.indexOf('&', idx + 6);
+                parent = href.substring(idx + 6, lidx > 0 ? lidx : href.length);
+                idx = parent.lastIndexOf('.');
+                parent = (idx > 0 ? parent.substring(0, idx) : null);
+            }
+            
+            location.href = '?page=viewer&parent=' + parent + '&name=' + $(this).text();
             event.preventDefault();
             return false;
         });
@@ -444,6 +461,21 @@
             event.preventDefault();
             return false;
         });
+        
+        var setupTitles = function(id) {
+            $("#" + id + " li").each(function() {
+                var $this = $(this);
+                if (!$this.attr('title')) {
+                    var text = $this.children('a').text();
+                    text = text.replace(/\s*[\r\n]+\s*/g, " ").trim();
+                    $this.attr('title', text);
+                }
+            });
+        };
+        
+        setupTitles('callees');
+        setupTitles('callers');
+        setupTitles('caller-lines');
         
         $('#template-viewer .caller-link').live('click', function (evt) {
             var $this = $(this);
@@ -456,6 +488,7 @@
                 var parent = href.substring(pidx + 8, nidx) 
                 $('#caller-lines').slideUp('fast', function() {
                     $('#caller-lines').load('<% pathPrefix %>system/viewer/callerlines?id=' + parent + '&caller=' + id, function() {
+                        setupTitles('caller-lines');
                         $('#caller-lines').slideDown('fast');
                     });
                 });

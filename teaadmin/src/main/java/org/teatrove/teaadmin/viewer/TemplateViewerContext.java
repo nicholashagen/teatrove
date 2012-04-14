@@ -10,7 +10,7 @@ public interface TemplateViewerContext {
     
     void resetTemplateViews();
     
-    void resetTemplateView(String name);
+    boolean resetTemplateView(String name);
     
     TemplateView getTemplateView(String parent, String name)
         throws Exception;

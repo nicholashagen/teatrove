@@ -43,9 +43,7 @@
             <div class="controls-wrapper">
                 <div id="loadingIndicator"></div>
                 <div role="label">Reset:</div>
-                <div id="buttonset-reset" class="buttonset ui-buttonset">
-                    <input type="radio" id="reset_radio1" name="radio" class="ui-helper-hidden-accessible"><label for="reset_radio1" aria-pressed="false" class="ui-button ui-widget ui-state-default ui-button-text-only ui-corner-left" role="button" aria-disabled="false"><span class="ui-button-text">Source</span></label>
-                </div>
+                <div id="button-reset" class="button" data-template="<% view.name %>">Source</div>
             </div>
         </div>
         <div id="template-source-container">
@@ -97,7 +95,6 @@
                                                             attr : { 
                                                                 rel : '<% (callee.isTemplate ? 'template' : 'function') %>', 
                                                                 id : 'callee-<% callee.name %>-<% callee.line %>' ,
-                                                                title : $('<span class="template"><% replace(replace(replace(replace(callee.statement, '\'', '"'), "&nbsp;", " "), "&amp;", "&"), "\n", " ") %></span>').text() 
                                                             },
                                                             state : 'closed',
                                                             metadata : {
@@ -207,13 +204,20 @@
                     <thead>
                         <tr class="stathead">
                             <th>
-                                <span style="line-height: 21px;">
-                                    Details for Source for <% view.location %>
+                                <span style="line-height: 21px;" title="<% view.location %>">
+                                    Details for <% name %>
                                 </span>
                                 <div class="template-options white" style="margin-top: 2px;">
-                                    <a class="compile" target="_top" href="remote/reload?reloadTemplates=selected&amp;selectedTemplates=<% name %>" title="Compile template"></a><a class="web" target="_blank" href="<% pathPrefix %><% templatePath %><% templateFile %>" title="Follow template url"></a><a class="info" target="_top" href="?page=template_info&amp;name=<% name %>" title="View template stats"></a><a class="reset" target="_top" href="remote/reset?name=<% name %>" title="Reset template stats"></a>
+                                    <a class="compile" target="_top" href="remote/reload?reloadTemplates=selected&amp;selectedTemplates=<% name %>" title="Compile template"></a>
+                                    <a class="code" target="_top" href="?page=viewer&amp;name=<% name %>" title="View template source code"></a>
+                                    <a class="web" target="_blank" href="<% pathPrefix %><% templatePath %><% templateFile %>" title="Follow template url"></a>
+                                    <a class="info" target="_top" href="?page=template_info&amp;name=<% name %>" title="View template stats"></a>
+                                    <a class="reset" target="_top" href="remote/reset?name=<% name %>" title="Reset template stats"></a>
                                 </div>
                             </th>
+                        </tr>
+                        <tr class="colhead">
+                            <th style="font-weight: normal;"><% view.location %></th>
                         </tr>
                     </thead>
                 </table>

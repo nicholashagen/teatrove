@@ -54,11 +54,11 @@ public class TemplateViewerApplication implements Application
 {
     private Log log;
     private int maxCache;
-    private String[] paths;
     private boolean initialized;
     private TeaServletAdmin admin;
     private ApplicationConfig config;
     private TeaServletEngine engine;
+    private TemplateViewerContext context;
 
     private Map<String, TemplateView> cache =
         new HashMap<String, TemplateView>();
@@ -79,18 +79,6 @@ public class TemplateViewerApplication implements Application
         this.config = conf;
         this.log = conf.getLog();
         this.maxCache = conf.getProperties().getInt("maxCache", 100);
-        
-        String tmp = conf.getProperties().getString("template.path");
-        if (tmp != null) { 
-            this.paths = tmp.split("[;,]");
-            for (int i = 0; i < this.paths.length; i++) {
-                this.paths[i] = this.paths[i].trim();
-                while (this.paths[i].endsWith("/")) {
-                    this.paths[i] = 
-                        this.paths[i].substring(0, this.paths[i].length() - 1);
-                }
-            }
-        }
     }
 
     @Override
@@ -111,7 +99,7 @@ public class TemplateViewerApplication implements Application
                                 ApplicationResponse response)
     {
         if (!initialized) { initialize(); }
-        return new TemplateViewerContextImpl(request, response);
+        return this.context;
     }
 
     protected void initialize()
@@ -149,11 +137,10 @@ public class TemplateViewerApplication implements Application
 
             // create a new administration and paths
             this.admin = new TeaServletAdmin(engine);
-            if (this.paths == null || this.paths.length == 0)
-            {
-                this.paths = this.admin.getTemplatePaths();
-            }
 
+            // create singleton context
+            this.context = new TemplateViewerContextImpl();
+            
             // mark initialized
             this.initialized = true;
         }
@@ -218,31 +205,10 @@ public class TemplateViewerApplication implements Application
 
     public class TemplateViewerContextImpl implements TemplateViewerContext
     {
-        @SuppressWarnings("unused")
-        private ApplicationRequest request;
-
-        @SuppressWarnings("unused")
-        private ApplicationResponse response;
-
-        public TemplateViewerContextImpl(ApplicationRequest request,
-                                         ApplicationResponse response)
+        public TemplateViewerContextImpl()
         {
             super();
-            this.request = request;
-            this.response = response;
         }
-
-        public List<Name> getNames()
-        {
-            return Arrays.asList(new Name("Nick"), new Name("John"));
-        }
-
-        public Integer[] getNumbersAsArray()
-        {
-            return new Integer[] { Integer.valueOf(1), Integer.valueOf(2) };
-        }
-
-
 
         public String[] findTemplates(String term)
         {
@@ -326,6 +292,12 @@ public class TemplateViewerApplication implements Application
 
         public void resetTemplateViews()
         {
+            // log result
+            if (log.isDebugEnabled()) 
+            {
+                log.debug("resetting all template sources");
+            }
+            
             cache.clear();
             sourceList.clear();
             sourceMap.clear();
@@ -333,6 +305,12 @@ public class TemplateViewerApplication implements Application
 
         public boolean resetTemplateView(String name)
         {
+            // log result
+            if (log.isDebugEnabled()) 
+            {
+                log.debug("resetting template source: " + name);
+            }
+            
             name = name.replace("/", ".");
             TemplateView view = cache.remove(name);
             TemplateSource source = sourceMap.remove(name);
@@ -343,6 +321,12 @@ public class TemplateViewerApplication implements Application
         public TemplateView getTemplateView(String parent, String name)
             throws Exception
         {
+            // log result
+            if (log.isDebugEnabled()) 
+            {
+                log.debug("looking for template source: " + parent + ":" + name);
+            }
+            
             // verify template
             if (name == null) { throw new IllegalArgumentException("name"); }
 
@@ -464,15 +448,6 @@ public class TemplateViewerApplication implements Application
             }
         }
 
-        protected String findTemplate(String parent, String name)
-        {
-            String path = parent.replace('/', '.') + "." + name;
-            TemplateRepository repo = TemplateRepository.getInstance();
-            if (repo.getTemplateInfo(path) != null) { return path; }
-            else if (repo.getTemplateInfo(name) != null) { return name; }
-            else { return null; }
-        }
-
         protected Reader findTemplate(TemplateView view, String name)
             throws Exception
         {
@@ -485,49 +460,6 @@ public class TemplateViewerApplication implements Application
             }
             
             return new BufferedReader(unit.getReader());
-            /*
-            String template = name.replace('.', '/') + ".tea";
-            if (!template.startsWith("/")) { 
-                template = "/".concat(template);
-            }
-
-            InputStream input = null;
-            for (int i = 0; input == null && i < paths.length; i++)
-            {
-                URL url = null;
-                String path = paths[i];
-                String fullName = path.concat(template);
-                try { url = new URL(fullName); }
-                catch (MalformedURLException e1) {
-                    ServletContext servletContext = config.getServletContext();
-                    try { url = servletContext.getResource(fullName); }
-                    catch (Exception e2) {
-                        log.debug("unable to find template source: " + fullName);
-                        log.debug(e1);
-                        log.debug(e2);
-                        throw new FileNotFoundException(name);
-                    }
-                }
-
-                if (url != null) {
-                    try {
-                        input = url.openStream();
-                        view.setLocation(url.toExternalForm());
-                    }
-                    catch (IOException ioe) {
-                        log.debug("unable to open input stream: " + url);
-                        log.debug(ioe);
-                    }
-                }
-            }
-
-            if (input == null)
-            {
-                throw new FileNotFoundException(name);
-            }
-
-            return new BufferedInputStream(input);
-            */
         }
 
         protected void processTemplate(TemplateView view, Reader input)
@@ -543,25 +475,6 @@ public class TemplateViewerApplication implements Application
             SourceWalker walker = new SourceWalker(buffer);
             walker.visit(parser.parse());
             walker.finish(view);
-        }
-
-        protected String trim(String string)
-        {
-            return string.trim().replace("&nbsp;", "").replace("&#160;", "");
-        }
-
-        protected Class<?> findType(String name)
-            throws Exception
-        {
-            if (name.contains(".")) { return Class.forName(name); }
-            else
-            {
-                try { return Class.forName("java.lang.".concat(name)); }
-                catch (ClassNotFoundException cnfe)
-                {
-                    return Class.forName("java.util.".concat(name));
-                }
-            }
         }
     }
 

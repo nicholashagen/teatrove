@@ -23,8 +23,16 @@
     parent = parameters["parent"]
     name = parameters["name"]
     view = getTemplateView(parent, name)
-    if (view == null) {
-        sendRedirect(pathPrefix & '/system/console?page=templates')
+    if (view == null or view.sourceCode == null) {
+%>
+
+<article>
+    <section id="template-viewer">
+        <em>No source code or template available for <% name %></em>
+    </section>
+</article>
+
+<%
     }
     else {
         templatePath = '/'; 

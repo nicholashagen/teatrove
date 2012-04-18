@@ -362,7 +362,10 @@ public class TemplateViewerApplication implements Application
             // build source if necessary
             if (view.getSourceCode() == null)
             {
-                this.parseTemplate(view);
+                try { this.parseTemplate(view); }
+                catch (Exception e) {
+                    log.error("source unavailable: " + path);
+                }
             }
 
             // get source code
@@ -458,7 +461,8 @@ public class TemplateViewerApplication implements Application
             if (unit == null) {
                 throw new FileNotFoundException(name);
             }
-            
+
+            view.setLocation(unit.getSourcePath());
             return new BufferedReader(unit.getReader());
         }
 

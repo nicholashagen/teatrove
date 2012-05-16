@@ -1,7 +1,6 @@
 package org.teatrove.teaadmin.viewer;
 
-import java.io.BufferedReader;
-import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
@@ -17,12 +16,10 @@ import java.util.TreeSet;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 
-import org.teatrove.tea.compiler.CompilationUnit;
 import org.teatrove.tea.compiler.Parser;
 import org.teatrove.tea.compiler.Scanner;
 import org.teatrove.tea.compiler.TemplateRepository;
 import org.teatrove.tea.compiler.TemplateRepository.TemplateInfo;
-import org.teatrove.tea.engine.TemplateCompilationResults;
 import org.teatrove.teaservlet.Application;
 import org.teatrove.teaservlet.ApplicationConfig;
 import org.teatrove.teaservlet.ApplicationRequest;
@@ -454,16 +451,19 @@ public class TemplateViewerApplication implements Application
         protected Reader findTemplate(TemplateView view, String name)
             throws Exception
         {
+            return new FileReader("C:/opt/projects/git/teatrove/teaadmin/src/main/tea/".concat(name.replace('.', '/')) + ".tea");
+            /*
             name = name.replace("/", ".");
             TemplateCompilationResults results =
-                engine.getTemplateSource().checkTemplates(null, true, name);
-            CompilationUnit unit = results.getReloadedTemplate(name);
-            if (unit == null) {
+                engine.getTemplateSource().checkTemplates(null, true, new String[] { name });
+            //CompilationUnit unit = results.g results.getReloadedTemplateNames();
+            //if (unit == null) {
                 throw new FileNotFoundException(name);
             }
 
             view.setLocation(unit.getSourcePath());
             return new BufferedReader(unit.getReader());
+            */
         }
 
         protected void processTemplate(TemplateView view, Reader input)

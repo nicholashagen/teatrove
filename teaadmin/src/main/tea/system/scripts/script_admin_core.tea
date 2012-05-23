@@ -209,6 +209,7 @@
                     $detailsContent.load(uri, function() {
                         calcWidth();
                         calcHeight();
+                        initTemplateOptionLinks();
                     });
                 }
             }
@@ -432,14 +433,7 @@
                 document.body.scrollTop -= 50;
             }
         });
-        
-        $('#button-reset').click(function() {
-            $.post('<% pathPrefix %>system/viewer/reset', { 
-                       reset: true, name: $(this).data('template') 
-                   },
-                   function() { location.reload(); });
-        });
-        
+
         $('#template-viewer .template .call a').live('click', function (evt) {
             var parent = '';
             var href = location.href;
@@ -510,6 +504,8 @@
             evt.preventDefault();
             return false;
         });
+        
+        initTemplateOptionLinks();
     };
     function initCompileOptions () {
         $("#switch-autocompile").iphoneSwitch(
@@ -704,6 +700,8 @@
             });
 			evt.preventDefault();
 		});
+		
+		initTemplateOptionLinks();
     };
     function getTemplateUpdates () {
         if ( $('#reload-container .sml-e').length == 0 ) {
@@ -1907,12 +1905,13 @@
     };
     function initTemplateOptionLinks () {
         $(".template-options a").live("click", function (evt) {
-            if ( $(this).is(".web") || $(this).is(".info") ) {
+            var $this = $(this);
+            if ( $this.is(".web") || $this.is(".info") || $this.is(".code") ) {
                 // follow link
-                //evt.preventDefault();
-            } else if ( $(this).is(".compile") || $(this).is(".reset") ) {
+                // evt.preventDefault();
+            } else if ( $this.is(".compile") || $this.is(".reset") ) {
                 $('#loadingIndicator').show();
-                var link = $(this);
+                var link = $this;
                 var url = $(link).attr('href');
                 var qs = $.deparam.querystring(url);
 
@@ -1989,7 +1988,7 @@
         });
     };
 	function initTemplateInfoOptions () {
-                initTemplateOptionLinks();
+        initTemplateOptionLinks();
 
 		var viewState = $.bbq.getState('view');
 		if ( viewState ) {

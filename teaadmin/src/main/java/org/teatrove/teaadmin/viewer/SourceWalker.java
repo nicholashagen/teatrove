@@ -9,6 +9,7 @@ import org.teatrove.tea.parsetree.Block;
 import org.teatrove.tea.parsetree.BooleanLiteral;
 import org.teatrove.tea.parsetree.BreakStatement;
 import org.teatrove.tea.parsetree.ContinueStatement;
+import org.teatrove.tea.parsetree.Expression;
 import org.teatrove.tea.parsetree.ForeachStatement;
 import org.teatrove.tea.parsetree.FunctionCallExpression;
 import org.teatrove.tea.parsetree.IfStatement;
@@ -201,17 +202,29 @@ public class SourceWalker extends TreeWalker {
 
     @Override
     public Object visit(FunctionCallExpression node) {
-        SourceInfo info = node.getSourceInfo();
-        callees.add(new CalleeInfo(node.getTarget().getName(), info, false));
+        SourceInfo info = node.getTarget().getSourceInfo();
+        info = info.setEndPosition(node.getSourceInfo().getEndPosition());
+        
+        Expression expr = node.getExpression();
+        if (expr == null) {
+            callees.add(new CalleeInfo(node.getTarget().getName(), info, false));
+        }
         
         String value = unit.read(info);
         int idx = value.indexOf('(');
         
         StringBuilder result = new StringBuilder(idx + 48);
-        result.append(escape("<span class=\"function\">"))
-              .append(escape("<a href=\"#\">"))
-              .append(value.substring(0, idx))
-              .append(escape("</a></span>"));
+        result.append(escape("<span class=\"function\">"));
+        if (expr == null) {
+            result.append(escape("<a href=\"#\">"))
+                  .append(value.substring(0, idx))
+                  .append(escape("</a>"));
+        }
+        else {
+            result.append(value.substring(0, idx));
+        }
+
+        result.append(escape("</span>"));
 
         SourceInfo src =
             info.setEndPosition(info.getStartPosition() + idx - 1);

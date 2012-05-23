@@ -44,7 +44,6 @@ public class RewriteUnit {
             throw new IllegalStateException("invalid start/end: " + start + '/' + end);
         }
 
-        // int soffset = getOffset(start);
         int soffset = getOffset(start);
         int eoffset = getOffset(end);
         return this.data.substring(start + soffset, end + eoffset + 1);

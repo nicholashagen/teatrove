@@ -51,7 +51,9 @@
             <div class="controls-wrapper">
                 <div id="loadingIndicator"></div>
                 <div role="label">Reset:</div>
-                <div id="button-reset" class="button" data-template="<% view.name %>">Source</div>
+                <div id="button-reset" class="button">
+                    <a href="<% pathPrefix %>system/viewer/reset?reset=true&name=<% name %>&parent=<% parent %>">Source</a>
+                </div>
             </div>
         </div>
         <div id="template-source-container">
@@ -213,9 +215,9 @@
                         <tr class="stathead">
                             <th>
                                 <span style="line-height: 21px;" title="<% view.location %>">
-                                    Details for <% name %>
+                                    Source for <% name %>
                                 </span>
-                                <div class="template-options white" style="margin-top: 2px;">
+                                <div class="template-options" style="margin-top: 2px;">
                                     <a class="compile" target="_top" href="remote/reload?reloadTemplates=selected&amp;selectedTemplates=<% name %>" title="Compile template"></a>
                                     <a class="code" target="_top" href="?page=viewer&amp;name=<% name %>" title="View template source code"></a>
                                     <a class="web" target="_blank" href="<% pathPrefix %><% templatePath %><% templateFile %>" title="Follow template url"></a>

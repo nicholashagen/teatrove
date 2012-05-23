@@ -1,6 +1,7 @@
 package org.teatrove.teaadmin.viewer;
 
-import java.io.FileReader;
+import java.io.BufferedReader;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
@@ -16,10 +17,12 @@ import java.util.TreeSet;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 
+import org.teatrove.tea.compiler.CompilationUnit;
 import org.teatrove.tea.compiler.Parser;
 import org.teatrove.tea.compiler.Scanner;
 import org.teatrove.tea.compiler.TemplateRepository;
 import org.teatrove.tea.compiler.TemplateRepository.TemplateInfo;
+import org.teatrove.tea.engine.TemplateCompilationResults;
 import org.teatrove.teaservlet.Application;
 import org.teatrove.teaservlet.ApplicationConfig;
 import org.teatrove.teaservlet.ApplicationRequest;
@@ -30,22 +33,6 @@ import org.teatrove.teaservlet.TeaServletAdmin.TemplateWrapper;
 import org.teatrove.teaservlet.TeaServletEngine;
 import org.teatrove.trove.io.SourceReader;
 import org.teatrove.trove.log.Log;
-
-/*
-
-fix issue w/ /relative vs absolute 'call xyz' and 'app.method'
-cache results and reset if mod after last updated
-size and last mod info?
-add close button and links in nav to show hiearchies
-right click to view hiearc
-quote states must interpret escape chars
-add support for recents
-general search (search entire source of all templates and provides matches)
-on right click method (open return type, open declaration)
-on right click call (open return type, open declaration, open info)
-on click of dot property (open type)
-
-*/
 
 public class TemplateViewerApplication implements Application
 {
@@ -362,6 +349,7 @@ public class TemplateViewerApplication implements Application
                 try { this.parseTemplate(view); }
                 catch (Exception e) {
                     log.error("source unavailable: " + path);
+                    log.error(e);
                 }
             }
 
@@ -451,19 +439,16 @@ public class TemplateViewerApplication implements Application
         protected Reader findTemplate(TemplateView view, String name)
             throws Exception
         {
-            return new FileReader("C:/opt/projects/git/teatrove/teaadmin/src/main/tea/".concat(name.replace('.', '/')) + ".tea");
-            /*
             name = name.replace("/", ".");
             TemplateCompilationResults results =
-                engine.getTemplateSource().checkTemplates(null, true, new String[] { name });
-            //CompilationUnit unit = results.g results.getReloadedTemplateNames();
-            //if (unit == null) {
+                engine.getTemplateSource().checkTemplates(null, true, name);
+            CompilationUnit unit = results.getReloadedTemplate(name);
+            if (unit == null) {
                 throw new FileNotFoundException(name);
             }
 
             view.setLocation(unit.getSourcePath());
             return new BufferedReader(unit.getReader());
-            */
         }
 
         protected void processTemplate(TemplateView view, Reader input)

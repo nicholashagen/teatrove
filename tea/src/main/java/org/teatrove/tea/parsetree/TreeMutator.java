@@ -192,6 +192,17 @@ public abstract class TreeMutator implements NodeVisitor {
         return node;
     }
 
+    public Object visit(NewClassExpression node) {
+        Name name = node.getTarget();
+        if (name != null) {
+            node.setTarget((Name) name.accept(this));
+        }
+
+        node.setExpressionList
+            ((ExpressionList)node.getExpressionList().accept(this));
+        return node;
+    }
+
     public Object visit(NewArrayExpression node) {
         node.setExpressionList
             ((ExpressionList)node.getExpressionList().accept(this));

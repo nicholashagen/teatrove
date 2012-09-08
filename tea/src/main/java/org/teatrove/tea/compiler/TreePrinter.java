@@ -46,6 +46,7 @@ import org.teatrove.tea.parsetree.Lookup;
 import org.teatrove.tea.parsetree.Name;
 import org.teatrove.tea.parsetree.NegateExpression;
 import org.teatrove.tea.parsetree.NewArrayExpression;
+import org.teatrove.tea.parsetree.NewClassExpression;
 import org.teatrove.tea.parsetree.NoOpExpression;
 import org.teatrove.tea.parsetree.Node;
 import org.teatrove.tea.parsetree.NodeVisitor;
@@ -109,6 +110,13 @@ public class TreePrinter extends CodeGenerator {
         }
         
         w.flush();
+    }
+
+    public void writeTo(CodeOutput out) throws IOException {
+        OutputStream output = out.getOutputStream();
+        writeTo(output);
+        output.flush();
+        output.close();
     }
 
     /**
@@ -413,6 +421,23 @@ public class TreePrinter extends CodeGenerator {
         public Object visit(ParenExpression node) {
             print("(");
             node.getExpression().accept(this);
+            print(")");
+
+            return null;
+        }
+
+        public Object visit(NewClassExpression node) {
+            if (node.isAssociative()) {
+                print("##");
+                print(node.getTarget().getName());
+                print("(");
+            }
+            else {
+                print("#");
+                print(node.getTarget().getName());
+                print("(");
+            }
+            node.getExpressionList().accept(this);
             print(")");
 
             return null;

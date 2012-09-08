@@ -36,6 +36,7 @@ import org.teatrove.tea.parsetree.CompareExpression;
 import org.teatrove.tea.parsetree.ConcatenateExpression;
 import org.teatrove.tea.parsetree.ContinueStatement;
 import org.teatrove.tea.parsetree.Directive;
+import org.teatrove.tea.parsetree.DynamicTypeName;
 import org.teatrove.tea.parsetree.Expression;
 import org.teatrove.tea.parsetree.ExpressionList;
 import org.teatrove.tea.parsetree.ExpressionStatement;
@@ -47,6 +48,7 @@ import org.teatrove.tea.parsetree.Lookup;
 import org.teatrove.tea.parsetree.Name;
 import org.teatrove.tea.parsetree.NegateExpression;
 import org.teatrove.tea.parsetree.NewArrayExpression;
+import org.teatrove.tea.parsetree.NewClassExpression;
 import org.teatrove.tea.parsetree.NoOpExpression;
 import org.teatrove.tea.parsetree.Node;
 import org.teatrove.tea.parsetree.NotExpression;
@@ -63,6 +65,7 @@ import org.teatrove.tea.parsetree.StringLiteral;
 import org.teatrove.tea.parsetree.SubstitutionStatement;
 import org.teatrove.tea.parsetree.Template;
 import org.teatrove.tea.parsetree.TemplateCallExpression;
+import org.teatrove.tea.parsetree.TemplateClass;
 import org.teatrove.tea.parsetree.TernaryExpression;
 import org.teatrove.tea.parsetree.TypeName;
 import org.teatrove.tea.parsetree.Variable;
@@ -210,9 +213,12 @@ public class Parser {
 
         SourceInfo templateInfo = token.getSourceInfo();
 
-        if (token.getID() != Token.TEMPLATE) {
+        Token typeToken = token;
+        int type = token.getID();
+        if (type != Token.TEMPLATE && type != Token.CLASS) {
+            int peek = peek().getID();
             if (token.getID() == Token.STRING &&
-                peek().getID() == Token.TEMPLATE) {
+                (peek == Token.TEMPLATE || peek == Token.CLASS)) {
 
                 error("template.start", token);
                 token = read();
@@ -230,7 +236,12 @@ public class Parser {
         // Check if a block is accepted as a parameter. Pattern is { ... }
         boolean subParam = false;
         token = peek();
-        if (token.getID() == Token.LBRACE || token.getID() == Token.ELLIPSIS) {
+        if (token.getID() == Token.LBRACE ||
+            token.getID() == Token.ELLIPSIS) {
+            if (type == Token.CLASS) {
+                error("template.substitution.unsupported", token);
+            }
+
             if (token.getID() == Token.ELLIPSIS) {
                 error("template.substitution.lbrace", token);
             }
@@ -288,8 +299,18 @@ public class Parser {
         templateInfo =
             templateInfo.setEndPosition(statementList.getSourceInfo());
 
-        return new Template(templateInfo, name, params, subParam,
+        if (type == Token.TEMPLATE) {
+            return new Template(templateInfo, name, params, subParam,
                             statementList, directiveList);
+        }
+        else if (type == Token.CLASS) {
+            return new TemplateClass(templateInfo, name, params,
+                                     statementList, directiveList);
+        }
+        else {
+            error("template.unsupported.type", typeToken);
+            return null;
+        }
     }
 
     private String parseIdentifier() throws IOException {
@@ -323,7 +344,7 @@ public class Parser {
                 }
 
                 if (token.isReservedWord()) {
-                    error("name.reserved.word", token.getImage(), token);
+                    // error("name.reserved.word", token.getImage(), token);
                     name.append(token.getImage());
                 }
                 else {
@@ -405,7 +426,17 @@ public class Parser {
     }
 
     private Variable parseVariableDeclaration(boolean isStaticallyTyped) throws IOException {
+        Token token = peek();
+        boolean dynamic = false;
+        if (token.getID() == Token.HASH) {
+            read();
+            dynamic = true;
+        }
+
         TypeName typeName = parseTypeName();
+        if (dynamic) {
+            typeName = new DynamicTypeName(typeName);
+        }
 
         SourceInfo info = peek().getSourceInfo();
         String varName = parseIdentifier();
@@ -1171,7 +1202,7 @@ public class Parser {
                 SourceInfo nameInfo = token.getSourceInfo();
                 if (token.getID() != Token.IDENT) {
                     if (token.isReservedWord()) {
-                        error("lookup.reserved.word", token.getImage(), token);
+                        // error("lookup.reserved.word", token.getImage(), token);
                         lookupName = new Name(nameInfo, token.getImage());
                     }
                     else {
@@ -1211,7 +1242,6 @@ public class Parser {
                 SourceInfo nameInfo = token.getSourceInfo();
                 if (token.getID() != Token.IDENT) {
                     if (token.isReservedWord()) {
-                        error("lookup.reserved.word", token.getImage(), token);
                         lookupName = new Name(nameInfo, token.getImage());
                     }
                     else {
@@ -1398,12 +1428,52 @@ public class Parser {
     private Expression parseNewArrayExpression(Token token)
         throws IOException {
 
+        Name name = null;
+        Token next = peek();
+        if (next.getID() == Token.IDENT) {
+            name = parseName();
+        }
+
+        boolean anonymous = (name == null && next.getID() == Token.LBRACE);
         boolean associative = (token.getID() == Token.DOUBLE_HASH);
 
         SourceInfo info = token.getSourceInfo();
-        ExpressionList list = parseList(Token.LPAREN, Token.RPAREN, associative);
+        ExpressionList list = null;
+        if (name != null || anonymous) {
+            list = parseList(Token.LBRACE, Token.RBRACE, associative);
+        } else {
+            list = parseList(Token.LPAREN, Token.RPAREN, associative);
+        }
+
         info = info.setEndPosition(list.getSourceInfo());
-        return new NewArrayExpression(info, list, associative);
+
+        if (name != null || anonymous) {
+            if (associative) {
+                Expression[] exprs = list.getExpressions();
+                for (int i = 0; i < exprs.length; i += 2) {
+                    if (exprs[i] instanceof StringLiteral) {
+                        continue;
+                    } else if (exprs[i] instanceof VariableRef) {
+                        SourceInfo source = exprs[i].getSourceInfo();
+                        String varname = ((VariableRef) exprs[i]).getName();
+                        exprs[i] = new StringLiteral(source, varname);
+                    } else {
+                        error("newclass.invalid.key", token);
+                    }
+
+                    list = new ExpressionList(list.getSourceInfo(), exprs);
+                }
+            }
+
+            if (anonymous) {
+                return new NewClassExpression(info, list);
+            } else {
+                return new NewClassExpression(info, name, list, associative);
+            }
+        }
+        else {
+            return new NewArrayExpression(info, list, associative);
+        }
     }
 
     private TemplateCallExpression parseTemplateCallExpression(Token token)

@@ -262,62 +262,22 @@ public class CompilationUnit implements CompileListener {
         return mDestFile;
     }
 
-    public OutputStream getOutputStream() throws IOException {
-        OutputStream out1 = null;
-        OutputStream out2 = null;
+    public File getDestinationFile(String innerClass) {
+        if (innerClass == null) {
+            return getDestinationFile();
+        } 
+        else if (mDestFile != null) {
+            String name = mDestFile.getName();
 
-        if (mDestDir != null) {
-            if (!mDestDir.exists()) {
-                mDestDir.mkdirs();
-            }
-
-            out1 = new FileOutputStream(mDestFile);
-        }
-
-        ClassInjector injector = mCompiler.getInjector();
-        if (injector != null) {
-            String className = getName();
-            String pack = getTargetPackage();
-            if (pack != null && pack.length() > 0) {
-                className = pack + '.' + className;
-            }
-            out2 = injector.getStream(className);
-        }
-
-        OutputStream out;
-
-        if (out1 != null) {
-            if (out2 != null) {
-                out = new DualOutput(out1, out2);
-            }
-            else {
-                out = out1;
-            }
-        }
-        else if (out2 != null) {
-            out = out2;
-        }
+            int idx = name.lastIndexOf('.');
+            name = name.substring(0, idx) + '$' + innerClass + ".class";
+            return new File(mDestFile.getParentFile(), name);
+        } 
         else {
-            out = new OutputStream() {
-                public void write(int b) {}
-                public void write(byte[] b, int off, int len) {}
-            };
-        }
-
-        return new BufferedOutputStream(out);
-    }
-    
-    public void resetOutputStream() {
-        if (mDestFile != null) {
-            mDestFile.delete();
-        }
-
-        ClassInjector injector = mCompiler.getInjector();
-        if (injector != null) {
-            injector.resetStream(getClassName());
+            return null;
         }
     }
-    
+        
     protected String getClassName() {
         return getClassName(null);
     }
@@ -336,6 +296,87 @@ public class CompilationUnit implements CompileListener {
         return className;
     }
 
+    public CodeOutput getOutput() {
+        return new CodeOutput() {
+            
+            public OutputStream getOutputStream()
+                throws IOException {
+
+                return getOutputStream(null);
+            }
+
+            public OutputStream getOutputStream(String innerClass)
+                throws IOException {
+    
+                OutputStream out1 = null;
+                OutputStream out2 = null;
+    
+                this.addInnerClass(innerClass);
+                
+                File dest = getDestinationFile(innerClass);
+                if (dest != null) {
+                    File dir = dest.getParentFile();
+                    if (!dir.exists()) {
+                        dir.mkdirs();
+                    }
+                    out1 = new FileOutputStream(dest);
+                }
+    
+                ClassInjector injector = mCompiler.getInjector();
+                if (injector != null) {
+                    out2 = injector.getStream(getClassName(innerClass));
+                }
+    
+                OutputStream out;
+    
+                if (out1 != null) {
+                    if (out2 != null) {
+                        out = new DualOutput(out1, out2);
+                    }
+                    else {
+                        out = out1;
+                    }
+                }
+                else if (out2 != null) {
+                    out = out2;
+                }
+                else {
+                    out = new OutputStream() {
+                        public void write(int b) {}
+                        public void write(byte[] b, int off, int len) {}
+                    };
+                }
+    
+                return new BufferedOutputStream(out);
+            }
+    
+            public void resetOutputStream() {
+                resetOutputStream(null);
+            }
+    
+            @Override
+            public void resetOutputStream(String innerClass) {
+                File destFile = getDestinationFile(innerClass);
+                if (destFile != null) {
+                    destFile.delete();
+                }
+
+                ClassInjector injector = mCompiler.getInjector();
+                if (injector != null) {
+                    // TODO: should this be getClassName() like above?
+                    injector.resetStream(getClassName(innerClass));
+                }
+            }
+    
+            @Override
+            public void resetOutputStreams() {
+                for (String innerClass : this.getInnerClasses()) {
+                    this.resetOutputStream(innerClass);
+                }
+            }
+        };
+    }
+
     protected InputStream getTemplateSource() 
         throws IOException {
         
@@ -346,8 +387,11 @@ public class CompilationUnit implements CompileListener {
         return mSource.getSource();
     }
 
-    public boolean signatureEquals(String templateName, TypeDesc[] params, TypeDesc returnType) throws IOException {
-        if(!getName().equals(templateName)) {
+    public boolean signatureEquals(String templateName, TypeDesc[] params, 
+                                   TypeDesc returnType) 
+        throws IOException {
+        
+        if (!getName().equals(templateName)) {
             return false;
         }
 
@@ -372,7 +416,9 @@ public class CompilationUnit implements CompileListener {
 
         for (int i = 0; i < vars.length; i++) {
             String type = classNameFromVariable(
-                    vars[i].getTypeName().getName(), vars[i].getTypeName().getDimensions());
+                vars[i].getTypeName().getName(), 
+                vars[i].getTypeName().getDimensions()
+            );
             sourceParams[i] = TypeDesc.forClass(type);
         }
 
@@ -381,14 +427,15 @@ public class CompilationUnit implements CompileListener {
         System.arraycopy(params, 1, temp, 0, temp.length);
 
         // compare params
-        if(! Arrays.equals(temp, sourceParams)) {
+        if (!Arrays.equals(temp, sourceParams)) {
             return false;
         }
 
         // compare return types (null is default from Template.getReturnType())
-        if(null!=tree.getReturnType()) {
-            TypeDesc srcReturnType = TypeDesc.forClass(tree.getReturnType().getSimpleName());
-            if(! returnType.equals(srcReturnType) ) {
+        if (null != tree.getReturnType()) {
+            TypeDesc srcReturnType = 
+                TypeDesc.forClass(tree.getReturnType().getSimpleName());
+            if (!returnType.equals(srcReturnType)) {
                 return false;
             }
         }

@@ -34,6 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+import java.util.Stack;
 
 import org.teatrove.tea.parsetree.AndExpression;
 import org.teatrove.tea.parsetree.ArithmeticExpression;
@@ -60,6 +61,7 @@ import org.teatrove.tea.parsetree.Lookup;
 import org.teatrove.tea.parsetree.Name;
 import org.teatrove.tea.parsetree.NegateExpression;
 import org.teatrove.tea.parsetree.NewArrayExpression;
+import org.teatrove.tea.parsetree.NewClassExpression;
 import org.teatrove.tea.parsetree.NoOpExpression;
 import org.teatrove.tea.parsetree.Node;
 import org.teatrove.tea.parsetree.NodeVisitor;
@@ -78,6 +80,7 @@ import org.teatrove.tea.parsetree.StringLiteral;
 import org.teatrove.tea.parsetree.SubstitutionStatement;
 import org.teatrove.tea.parsetree.Template;
 import org.teatrove.tea.parsetree.TemplateCallExpression;
+import org.teatrove.tea.parsetree.TemplateClass;
 import org.teatrove.tea.parsetree.TernaryExpression;
 import org.teatrove.tea.parsetree.TreeWalker;
 import org.teatrove.tea.parsetree.TypeExpression;
@@ -154,7 +157,9 @@ public class JavaClassGenerator extends CodeGenerator {
     }
 
     private static TypeDesc makeDesc(Type type, boolean natural) {
-        if (natural) {
+        if (type.isDynamic()) {
+            return makeDesc(type.getClassName());
+        } else if (natural) {
             return makeDesc(type.getNaturalClass(), type.getGenericClass());
         } else {
             return makeDesc(type.getObjectClass(), type.getGenericClass());
@@ -246,6 +251,15 @@ public class JavaClassGenerator extends CodeGenerator {
     private boolean mGenerateSubFormat;
     private List<String> mCallerToSubNoList = new ArrayList<String>();
 
+    private CodeOutput mOutput;
+    
+    private ClassFile mClassFile;
+    private ClassFile mOuterClass;
+    
+    // maps inner class names to their class files
+    private Map<String, ClassFile> mInnerClasses =
+        new HashMap<String, ClassFile>();
+
     // Maps Variable names to variable object fields that need to be defined.
     private Map<String, Variable> mFields = new HashMap<String, Variable>();
 
@@ -255,6 +269,9 @@ public class JavaClassGenerator extends CodeGenerator {
 
     private MessageFormatter mFormatter;
 
+    // maintains stack between inner classes
+    private Stack<ClassState> mClassStates = new Stack<ClassState>();
+    
     public JavaClassGenerator(CompilationUnit unit) {
         super(unit.getParseTree());
         mUnit = unit;
@@ -355,14 +372,17 @@ public class JavaClassGenerator extends CodeGenerator {
         warn(str, info);
     }
     
-    public void writeTo(OutputStream out) throws IOException {
+    public void writeTo(CodeOutput out) throws IOException {
+        mOutput = out;
+
         String className = mUnit.getName();
         String targetPackage = mUnit.getTargetPackage();
         if (targetPackage != null) {
             className = targetPackage + '.' + className;
         }
 
-        ClassFile classFile = new ClassFile(className);
+        // setup class
+        ClassFile classFile = enterClass(className);
         classFile.getModifiers().setFinal(true);
 
         String sourceFile = mUnit.getSourcePath();
@@ -397,10 +417,60 @@ public class JavaClassGenerator extends CodeGenerator {
             }
         });
 
-        generateTemplate(t, className, classFile);
+        if (t instanceof TemplateClass) {
+            generateTemplateClass((TemplateClass) t, className, classFile);
+        }
+        else {
+            generateTemplate(t, className, classFile);
+        }
 
-        classFile.writeTo(out);
-        out.flush();
+        // write class
+        if (!writeClassFile(classFile, mOutput, null)) {
+            mOutput.resetOutputStreams();
+            return;
+        }
+
+        
+        // write inner classes
+        for (Map.Entry<String, ClassFile> entry : mInnerClasses.entrySet()) {
+            if (!writeClassFile(entry.getValue(), mOutput, entry.getKey())) {
+                mOutput.resetOutputStreams();
+                return;
+            }
+        }
+
+        // done with class
+        exitClass();
+    }
+
+    protected boolean writeClassFile(ClassFile classFile, CodeOutput out,
+                                     String innerClass) {
+
+        OutputStream output = null;
+
+        // write main class
+        try {
+            if (innerClass == null) { output = out.getOutputStream(); }
+            else { output = out.getOutputStream(innerClass); }
+
+            classFile.writeTo(output);
+
+            output.flush();
+            output.close();
+            
+            return true;
+        }
+        catch (Exception exception) {
+            exception.printStackTrace();
+            if (output != null) {
+                try { output.close(); }
+                catch (Exception ignore) { 
+                    ignore.printStackTrace();
+                }
+            }
+
+            return false;
+        }
     }
 
     protected void generateTemplateParameters(Template t, ClassFile classFile) {
@@ -726,6 +796,138 @@ public class JavaClassGenerator extends CodeGenerator {
         }
     }
 
+    protected void generateTemplateClass(TemplateClass t, String className,
+                                         ClassFile classFile) {
+
+        // build fields
+        Modifiers modifiers = new Modifiers();
+        modifiers.setPrivate(true);
+
+        Variable[] params = t.getParams();
+        int paramCount = params.length;
+        for (int i = 0; i < paramCount; i++) {
+            Variable param = params[i];
+            classFile.addField(modifiers, param.getName(), makeDesc(param));
+        }
+
+        // build template parameters
+        generateTemplateParameters(t, classFile);
+
+        // build default ctor
+        modifiers = new Modifiers();
+        modifiers.setPublic(true);
+
+        MethodInfo mi = classFile.addConstructor(modifiers, new TypeDesc[0]);
+        CodeBuilder builder = new CodeBuilder(mi);
+        builder.loadThis();
+        builder.invokeSuperConstructor(new TypeDesc[0]);
+        builder.returnVoid();
+
+        // build params-based ctor
+        TypeDesc[] ptypes = new TypeDesc[paramCount];
+        for (int i = 0; i < paramCount; i++) {
+            ptypes[i] = makeDesc(params[i]);
+        }
+
+        mi = classFile.addConstructor(modifiers, ptypes);
+        builder = new CodeBuilder(mi);
+        builder.loadThis();
+        builder.invokeSuperConstructor(new TypeDesc[0]);
+
+        for (int i = 0; i < paramCount; i++) {
+            Variable param = params[i];
+            builder.loadThis();
+            builder.loadLocal(builder.getParameters()[i]);
+            builder.storeField(param.getName(), makeDesc(param));
+        }
+
+        builder.returnVoid();
+
+        // build getters/setters
+        for (int i = 0; i < paramCount; i++) {
+            Variable param = params[i];
+
+            String name = param.getName();
+            String cname = Character.toUpperCase(name.charAt(0)) + name.substring(1);
+            String getter = "get" + cname;
+            String setter = "set" + cname;
+            TypeDesc type = makeDesc(param);
+
+            mi = classFile.addMethod(modifiers, getter, type, new TypeDesc[0]);
+            builder = new CodeBuilder(mi);
+            builder.loadThis();
+            builder.loadField(name, type);
+            builder.returnValue(type);
+
+            mi = classFile.addMethod(modifiers, setter, TypeDesc.VOID,
+                                     new TypeDesc[] { type });
+            builder = new CodeBuilder(mi);
+            builder.loadThis();
+            builder.loadLocal(builder.getParameters()[0]);
+            builder.storeField(name, type);
+            builder.returnVoid();
+        }
+
+        mi = classFile.addMethod(modifiers, "toString", TypeDesc.STRING,
+                                 new TypeDesc[0]);
+        builder = new CodeBuilder(mi);
+        builder.loadConstant(t.getName().getName());
+        builder.returnValue(TypeDesc.STRING);
+    }
+
+    protected ClassFile enterClass(String name) {
+        return enterClass(new ClassFile(name));
+    }
+    
+    protected ClassFile enterInnerClass(String name) {
+        ClassFile classFile = mOuterClass.addInnerClass(name);
+        mInnerClasses.put(name, classFile);
+        ClassFile result = enterClass(classFile);
+        return result;
+    }
+    
+    protected ClassFile enterClass(ClassFile classFile) {
+        // save state
+        ClassState state = new ClassState();
+        state.mClassFile = mClassFile;
+        state.mFields = mFields;
+        state.mInitializerStatements = mInitializerStatements;
+        
+        // add to stack
+        mClassStates.push(state);
+
+        // setup new states
+        mClassFile = classFile;
+        if (mOuterClass == null) {
+            mOuterClass = mClassFile;
+        }
+        mFields = new HashMap<String, Variable>();
+        mInitializerStatements = new ArrayList<Object>();
+        
+        // return class
+        return mClassFile;
+    }
+    
+    protected void exitClass() {
+        // pop from stack
+        ClassState state = mClassStates.pop();
+        
+        // restore state
+        mClassFile = state.mClassFile;
+        mFields = state.mFields;
+        mInitializerStatements = state.mInitializerStatements;
+    }
+
+    private static class ClassState {
+        private ClassFile mClassFile;
+
+        private Map<String, Variable> mFields = 
+            new HashMap<String, Variable>();
+
+        private List<Object> mInitializerStatements =
+            new ArrayList<Object>();
+    }
+    
     private class Visitor implements NodeVisitor {
         private CodeBuilder mBuilder;
         private int mLastLine = -1;
@@ -945,6 +1147,12 @@ public class JavaClassGenerator extends CodeGenerator {
         }
 
         private void generate(Node node) {
+            generate(node, mBuilder);
+        }
+        
+        private void generate(Node node, CodeBuilder builder) {
+            CodeBuilder prevBuilder = mBuilder;
+            mBuilder = builder;
             try {
                 setLineNumber(node.getSourceInfo());
                 if (!(node instanceof Expression)) {
@@ -976,6 +1184,9 @@ public class JavaClassGenerator extends CodeGenerator {
             }
             catch (RuntimeException e) {
                 throw new DetailException(e, "(near line " + mLastLine + ')');
+            }
+            finally {
+                mBuilder = prevBuilder;
             }
         }
 
@@ -1444,6 +1655,122 @@ public class JavaClassGenerator extends CodeGenerator {
             return null;
         }
 
+        public Object visit(NewClassExpression node) {
+            ExpressionList list = node.getExpressionList();
+            Expression[] exprs = list.getExpressions();
+            CompilationUnit unit = node.getCalledTemplate();
+
+            String className = null;
+            if (!node.isAnonymous()) {
+                className = unit.getTargetPackage();
+                if (className == null) {
+                    className = unit.getName();
+                }
+                else {
+                    className = className + '.' + unit.getName();
+                }
+            }
+
+            if (node.isAnonymous()) {
+                className = node.getType().getClassName();
+                String innerName =
+                    className.substring(className.lastIndexOf('$') + 1);
+
+                ClassFile innerClass = enterInnerClass(innerName);
+                innerClass.getModifiers().setPublic(true);
+                innerClass.getModifiers().setStatic(true);
+
+                SourceInfo source = node.getSourceInfo();
+                Variable[] vars = new Variable[exprs.length / 2];
+                for (int i = 0; i < exprs.length; i += 2) {
+                    StringLiteral name = (StringLiteral) exprs[i];
+                    Expression expr = exprs[i + 1];
+
+                    vars[i / 2] = new Variable(source, (String) name.getValue(),
+                                               expr.getType());
+                }
+
+                TemplateClass tc = new TemplateClass
+                (
+                    source, new Name(source, innerName), vars, null, null
+                );
+
+                generateTemplateClass(tc, innerName, innerClass);
+                exitClass();
+            }
+
+            if (mAllowInitializerStatements && node.isAllConstant()) {
+                SourceInfo info = node.getSourceInfo();
+
+                // Create a variable...
+                Variable var = new Variable(info, "inner",
+                                            new TypeName(info, className));
+                var.setStatic(true);
+                generate(var);
+
+                // Create an assignment statement...
+                VariableRef ref = new VariableRef(info, "inner");
+                ref.setVariable(var);
+
+                // Clone the expression so that the type can be
+                // changed back to the underlying array type. This prevents
+                // unecessary casting in the assignment statement.
+                Expression clonedNode = (Expression)node.clone();
+                clonedNode.setType(Type.OBJECT_TYPE);
+
+                AssignmentStatement assn =
+                    new AssignmentStatement(info, ref, clonedNode);
+
+                // Move this statement into the static initializer
+                mInitializerStatements.add(assn);
+
+                // Substitute a field access for a NewArrayExpression
+                TypeDesc td = makeDesc(className);
+                mBuilder.loadStaticField(var.getName(), td);
+            }
+            else if (node.isAssociative()) {
+                mBuilder.newObject(makeDesc(className));
+
+                mBuilder.dup();
+                mBuilder.invokeConstructor(className, new TypeDesc[0]);
+
+                for (int i = 0; i < exprs.length - 1; i += 2) {
+                    Expression param = exprs[i];
+                    Expression value = exprs[i + 1];
+
+                    String name = null;
+                    if (param instanceof StringLiteral) {
+                        name = (String) ((StringLiteral) param).getValue();
+                    }
+
+                    String type = value.getType().getClassName();
+                    String setter =
+                        "set" + Character.toUpperCase(name.charAt(0)) + name.substring(1);
+
+                    mBuilder.dup();
+                    generate(value);
+                    mBuilder.invokeVirtual(className, setter, TypeDesc.VOID,
+                                           new TypeDesc[] { makeDesc(type) });
+                }
+            }
+            else {
+                mBuilder.newObject(makeDesc(className));
+                mBuilder.dup();
+
+                Variable[] params = unit.getParseTree().getParams();
+                TypeDesc[] types = new TypeDesc[exprs.length];
+                for (int i = 0; i < exprs.length; i++) {
+                    types[i] = makeDesc(params[i]);
+                    generate(exprs[i]);
+                    // mBuilder.checkCast(types[i]);
+                }
+
+                mBuilder.invokeConstructor(className, types);
+            }
+
+            return null;
+        }
+
         public Object visit(NewArrayExpression node) {
             ExpressionList list = node.getExpressionList();
             Expression[] exprs = list.getExpressions();
@@ -1633,25 +1960,44 @@ public class JavaClassGenerator extends CodeGenerator {
             // generate null-safe check if necessary
             generateNullSafe(node, expr, new NullSafeCallback() {
                 public Type execute() {
+                    Type type = null;
                     Method readMethod = node.getReadMethod();
                     String lookupName = node.getLookupName().getName();
+                    
+                    if (readMethod == null && 
+                        expr.getType() instanceof DynamicType) {
+                        
+                        String className = expr.getType().getClassName();
+                        DynamicType dynamic = (DynamicType) expr.getType();
+                        Type retType = dynamic.getParameterType(lookupName);
 
-                    if (expr.getType().getObjectClass().isArray() &&
-                        lookupName.equals("length")) {
+                        String methodName =
+                            "get" + Character.toUpperCase(lookupName.charAt(0)) + 
+                            lookupName.substring(1);
 
-                        mBuilder.arrayLength();
-                        return Type.INT_TYPE;
+                        type = retType;
+                        mBuilder.invokeVirtual(className, methodName,
+                                               makeDesc(retType), new TypeDesc[0]);
                     }
-                    else {
+                    else if (expr.getType().getObjectClass().isArray() &&
+                             lookupName.equals("length")) {
+
+                        type = Type.INT_TYPE;
+                        mBuilder.arrayLength();
+                    }
+                    else if (readMethod != null) {
                         if (Modifier.isStatic(readMethod.getModifiers())) {
                             // Discard the object to call method on.
                             mBuilder.pop();
                         }
 
-                        mBuilder.invoke(readMethod);
-                        return new Type(readMethod.getReturnType(),
+                        type = new Type(readMethod.getReturnType(), 
                                         readMethod.getGenericReturnType());
+                        
+                        mBuilder.invoke(readMethod);
                     }
+                    
+                    return type;
                 }
             });
 

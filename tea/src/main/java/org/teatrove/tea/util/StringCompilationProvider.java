@@ -40,6 +40,10 @@ public class StringCompilationProvider implements CompilationProvider {
         mTemplateSources = new ConcurrentHashMap<String, TemplateSource>();
     }
 
+    public void clearSources() {
+        mTemplateSources.clear();
+    }
+    
     @Override
     public boolean sourceExists(String name) {
         return mTemplateSources.containsKey(name);

@@ -45,6 +45,7 @@ import org.teatrove.tea.parsetree.CompareExpression;
 import org.teatrove.tea.parsetree.ConcatenateExpression;
 import org.teatrove.tea.parsetree.ContinueStatement;
 import org.teatrove.tea.parsetree.Directive;
+import org.teatrove.tea.parsetree.DynamicTypeName;
 import org.teatrove.tea.parsetree.ExceptionGuardStatement;
 import org.teatrove.tea.parsetree.Expression;
 import org.teatrove.tea.parsetree.ExpressionList;
@@ -57,6 +58,7 @@ import org.teatrove.tea.parsetree.Lookup;
 import org.teatrove.tea.parsetree.Name;
 import org.teatrove.tea.parsetree.NegateExpression;
 import org.teatrove.tea.parsetree.NewArrayExpression;
+import org.teatrove.tea.parsetree.NewClassExpression;
 import org.teatrove.tea.parsetree.NoOpExpression;
 import org.teatrove.tea.parsetree.Node;
 import org.teatrove.tea.parsetree.NotExpression;
@@ -73,6 +75,7 @@ import org.teatrove.tea.parsetree.StringLiteral;
 import org.teatrove.tea.parsetree.SubstitutionStatement;
 import org.teatrove.tea.parsetree.Template;
 import org.teatrove.tea.parsetree.TemplateCallExpression;
+import org.teatrove.tea.parsetree.TemplateClass;
 import org.teatrove.tea.parsetree.TernaryExpression;
 import org.teatrove.tea.parsetree.TreeMutator;
 import org.teatrove.tea.parsetree.TreeWalker;
@@ -358,6 +361,34 @@ public class TypeChecker {
             return mScope = mScope.getParent();
         }
 
+        /*private void defineVariable(VariableRef ref) {
+            Type type = null;
+            
+            type = ref.getType();
+            if (type == null) {
+                Variable var = ref.getVariable();
+                if (var != null) {
+                    type = var.getType();
+                    if (type == null) {
+                        TypeName typeName = var.getTypeName();
+                        if (typeName != null) {
+                            type = typeName.getType();
+                            if (type == null) {
+                                check(typeName);
+                                type = typeName.getType();
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (type == null) {
+                type = Type.DERIVED_TYPE;
+            }
+            
+            defineVariable(ref, type);
+        }*/
+        
         private void defineVariable(VariableRef ref, Type type) {
             Variable v = ref.getVariable();
             boolean staticallyTyped = v != null ? v.isStaticallyTyped() : false;
@@ -412,6 +443,18 @@ public class TypeChecker {
             }
 
             Type returnType = mReturnType;
+            if (node instanceof TemplateClass) {
+                String pkg = mUnit.getTargetPackage();
+                // String name = node.getName().getName();
+                DynamicType dynamic = new DynamicType(pkg, mUnit.getName());
+                if (declared != null) {
+                    for (Variable v : declared) {
+                        dynamic.addParameter(v.getName(), v.getType());
+                    }
+                }
+
+                returnType = dynamic;
+            }
             if (returnType == null) {
                 returnType = Type.VOID_TYPE;
             }
@@ -422,6 +465,50 @@ public class TypeChecker {
         }
 
         public Object visit(Name node) {
+            return null;
+        }
+
+        public Object visit(DynamicTypeName node) {
+            String name = node.getName();
+            Compiler compiler = mUnit.getCompiler();
+
+            // Look for a matching template to call.
+
+            CompilationUnit unit = compiler.getCompilationUnit(name, mUnit);
+            if (unit == mUnit) {
+                unit = compiler.getCompilationUnit(name, null);
+            }
+            
+            if (unit == null) {
+                error("dynamictype.not.found", node);
+                return null;
+            }
+
+            Template tree = unit.getParseTree();
+            if (tree instanceof TemplateClass) {
+                node.setType(tree.getReturnType());
+            }
+            else {
+                List<NewClassExpression> classes = tree.getAnonymousClasses();
+                if (classes.size() == 1) {
+                    node.setType(classes.get(0).getType());
+                }
+                else {
+                    error("dynamictype.not.templateclass", node);
+                }
+            }
+
+            /*
+             * TODO: dimensions?
+            int dim = node.getDimensions();
+            if (dim > 0) {
+                clazz =
+                    Array.newInstance(clazz, new int[dim]).getClass();
+            }
+
+            node.setType(new Type(clazz));
+            */
+
             return null;
         }
 
@@ -520,6 +607,10 @@ public class TypeChecker {
         }
 
         public Object visit(TypeName node) {
+            if (node instanceof DynamicTypeName) {
+                return visit((DynamicTypeName) node);
+            }
+
             // Check that type name is a valid java class.
             String name = node.getName();
             Class<?> clazz = lookupType(name, node.getDimensions(), node);
@@ -1188,6 +1279,241 @@ public class TypeChecker {
             return null;
         }
 
+        protected Object anonymousNewClassExpression(NewClassExpression node) {
+            // verify associative
+            if (!node.isAssociative()) {
+                error("newclassexpresion.not.associative", node);
+                return null;
+            }
+
+            ExpressionList list = node.getExpressionList();
+            check(list);
+
+            Expression[] exprs = list.getExpressions();
+            int length = exprs.length;
+
+            if (length % 2 != 0) {
+                error("newarrayexpression.associative", node);
+                return null;
+            }
+
+            long hash = 0;
+            Type[] types = new Type[length / 2];
+            String[] names = new String[length / 2];
+            for (int i = 0; i < length - 1; i += 2) {
+                Expression var = exprs[i];
+                Expression expr = exprs[i + 1];
+
+                String varname = null;
+                if (var instanceof StringLiteral) {
+                    varname = (String) ((StringLiteral) var).getValue();
+                } else {
+                    error("newclassexpression.invalid.key", node);
+                    continue;
+                }
+
+                hash += (17 * varname.hashCode()) +
+                        (23 * expr.getType().getClassName().hashCode());
+
+                names[i / 2] = varname;
+                types[i / 2] = expr.getType();
+            }
+
+            String pkg = mUnit.getTargetPackage();
+            String className = null;
+            if (pkg == null) { className = mUnit.getName(); }
+            else { className = pkg + '.' + mUnit.getName(); }
+
+            DynamicType type =
+                new DynamicType(className + "$anon" + Math.abs(hash));
+
+            for (int i = 0; i < names.length; i++) {
+                type.addParameter(names[i], types[i]);
+            }
+
+            node.setType(type);
+            
+            mUnit.getParseTree().addAnonymousClass(node);
+            
+            return null;
+        }
+
+        public Object visit(NewClassExpression node) {
+            if (node.isAnonymous()) {
+                return anonymousNewClassExpression(node);
+            }
+
+            Compiler compiler = mUnit.getCompiler();
+            String name = node.getTarget().getName();
+
+            // look for a matching template to call.
+
+            CompilationUnit unit = compiler.getCompilationUnit(name, mUnit);
+            if (unit == null) {
+                error("templatecallexpression.not.found", node);
+                return null;
+            }
+
+            // TODO: if tree is templaet and template has only one 
+            Template tree = unit.getParseTree();
+            if (!(tree instanceof TemplateClass)) {
+                error("templatecallexpression.not.class", node);
+                return null;
+            }
+
+            Variable[] formalParams = tree.getParams();
+            node.setType(tree.getReturnType());
+            node.setCalledTemplate(unit);
+
+            // handle associative arguments
+            if (node.isAssociative()) {
+                ExpressionList list = node.getExpressionList();
+                check(list);
+
+                Expression[] exprs = list.getExpressions();
+                int length = exprs.length;
+
+                if (length % 2 != 0) {
+                    error("newarrayexpression.associative", node);
+                }
+
+                for (int i = 0; i < length - 1; i += 2) {
+                    Expression var = exprs[i];
+                    Expression expr = exprs[i + 1];
+
+                    String varname = null;
+                    if (var instanceof StringLiteral) {
+                        varname = (String) ((StringLiteral) var).getValue();
+                    } else {
+                        error("newclassexpression.invalid.key", node);
+                        continue;
+                    }
+
+                    Variable found = null;
+                    for (int j = 0; j < formalParams.length; j++) {
+                        Variable param = formalParams[j];
+
+                        if (param.getName().equals(varname)) {
+                            found = param;
+                            break;
+                        }
+                    }
+
+                    if (found == null) {
+                        error("newclassexpression.key.not.found", node);
+                        continue;
+                    }
+
+                    Type type = found.getType();
+                    Type actual = expr.getType();
+
+                    if (type == null) {
+                        error("templatecallexpression.parameter.unknown",
+                              node);
+                        return null;
+                    }
+
+                    int cost = type.convertableFrom(actual);
+                    if (cost < 0) {
+                        node.setCalledTemplate(null);
+
+                        String msg1 = type.getFullName();
+                        String msg2 = actual.getFullName();
+
+                        ClassLoader CL1 = type.getNaturalClass()
+                            .getClassLoader();
+
+                        ClassLoader CL2 = actual.getNaturalClass()
+                            .getClassLoader();
+
+                        if (CL1 != CL2) {
+                            msg1 += "(" + CL1 + ")";
+                            msg2 += "(" + CL2 + ")";
+                        }
+
+                        error("templatecallexpression.conversion",
+                              msg1, msg2, exprs[i]);
+                    }
+                    else {
+                        expr.convertTo(type, false);
+                    }
+                }
+            }
+
+            // handle ctor arguments
+            else {
+                ExpressionList list = node.getExpressionList();
+                check(list);
+
+                Expression[] exprs = list.getExpressions();
+                int length = exprs.length;
+                Type[] actualTypes = new Type[length];
+                for (int i=0; i<length; i++) {
+                    actualTypes[i] = exprs[i].getType();
+                }
+
+                if (formalParams != null) {
+                    if (formalParams.length != length) {
+                        error("templatecallexpression.parameter.count",
+                              String.valueOf(formalParams.length),
+                              String.valueOf(length), node);
+                        return null;
+                    }
+
+                    node.setCalledTemplate(unit);
+                    for (int i=0; i<length; i++) {
+                        Type type = formalParams[i].getType();
+
+                        if (type == null) {
+                            error("templatecallexpression.parameter.unknown",
+                                  node);
+                            return null;
+                        }
+
+                        int cost = type.convertableFrom(actualTypes[i]);
+                        if (cost < 0) {
+                            node.setCalledTemplate(null);
+
+                            String msg1 = actualTypes[i].getFullName();
+                            String msg2 = type.getFullName();
+
+                            ClassLoader CL1 = actualTypes[i].getNaturalClass()
+                                .getClassLoader();
+
+                            ClassLoader CL2 = type.getNaturalClass()
+                                .getClassLoader();
+
+                            if (CL1 != CL2) {
+                                msg1 += "(" + CL1 + ")";
+                                msg2 += "(" + CL2 + ")";
+                            }
+
+                            error("templatecallexpression.conversion",
+                                  msg1, msg2, exprs[i]);
+                        }
+                        else {
+                            exprs[i].convertTo(type, false);
+                        }
+                    }
+                }
+            }
+
+            Type retType = tree.getReturnType();
+            if (retType == null) {
+                retType = Type.VOID_TYPE;
+            }
+            node.setType(retType);
+
+            if (Type.VOID_TYPE.equals(retType)) {
+                //error("templatecallexpression.template.void", node);
+                //return null;
+                retType = Type.OBJECT_TYPE;
+                node.setType(retType);
+            }
+
+            return null;
+        }
+
         public Object visit(NewArrayExpression node) {
             ExpressionList list = node.getExpressionList();
             check(list);
@@ -1305,6 +1631,9 @@ public class TypeChecker {
                 }
                 else {
                     Type exprType = expr.getType();
+                    if (exprType instanceof DynamicType) {
+                        // ((DynamicType) exprType).getFullName();
+                    }
                     if (exprType != null) {
                         methods = exprType.getObjectClass().getMethods();
                     }
@@ -1799,7 +2128,7 @@ public class TypeChecker {
 
                 PropertyDescriptor prop = properties.get(lookupName);
                 // TODO: consider checking if public field named lookupName
-                if (prop == null) {
+                    if (prop == null && !type.isDynamic()) {
                     error("lookup.undefined", lookupName, type.getSimpleName(),
                           node.getLookupName());
                     return null;
@@ -1839,7 +2168,17 @@ public class TypeChecker {
                                                : new Type(retClass, ge));
                     }
                 }
+                else if (type instanceof DynamicType) {
+                    DynamicType dynamic = (DynamicType) type;
+                    if (!dynamic.hasParameter(lookupName)) {
+                        error("lookup.unreadable", lookupName,
+                              node.getLookupName());
+                        return null;
+                    }
 
+                    nodeType = dynamic.getParameterType(lookupName);
+                }
+    
                 Class<?> nodeClass = nodeType.getNaturalClass();
                 Type genericType = Generics.findType(nodeType, type);
                 if (genericType != null) {
@@ -1865,7 +2204,7 @@ public class TypeChecker {
                     node.convertTo(Type.STRING_TYPE);
                 }
 
-                if (ClassUtils.isDeprecated(rmethod)) {
+                if (rmethod != null && ClassUtils.isDeprecated(rmethod)) {
                     warn("functioncallexpression.deprecated", lookupName, node);
                 }
                 
@@ -2037,6 +2376,34 @@ public class TypeChecker {
 
             Type leftType = left.getType();
             Type rightType = right.getType();
+
+            Type newLeftType = null, newRightType = null;
+            if (leftType == Type.DERIVED_TYPE &&
+                rightType == Type.DERIVED_TYPE) {
+                newLeftType = newRightType = new Type(Number.class).toNonNull();
+            }
+            else if (leftType == Type.DERIVED_TYPE) {
+                newLeftType = rightType.toNonPrimitive().toNonNull();
+            }
+            else if (rightType == Type.DERIVED_TYPE) {
+                newRightType = leftType.toNonPrimitive().toNonNull();
+            }
+
+            if (newLeftType != null) {
+                leftType = newLeftType;
+                left.setType(newLeftType);
+                if (left instanceof VariableRef) {
+                    ((VariableRef) left).getVariable().setType(newLeftType);
+                }
+            }
+
+            if (newRightType != null) {
+                rightType = newRightType;
+                right.setType(newRightType);
+                if (right instanceof VariableRef) {
+                    ((VariableRef) right).getVariable().setType(newRightType);
+                }
+            }
 
             if (binaryTypeCheck(node, Number.class)) {
                 Type type = leftType.getCompatibleType(rightType);

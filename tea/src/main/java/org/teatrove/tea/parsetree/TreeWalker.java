@@ -190,6 +190,13 @@ public abstract class TreeWalker implements NodeVisitor {
         return null;
     }
 
+    public Object visit(NewClassExpression node) {
+    	Name name = node.getTarget();
+    	if (name != null) { name.accept(this); }
+        node.getExpressionList().accept(this);
+        return null;
+    }
+
     public Object visit(NewArrayExpression node) {
         node.getExpressionList().accept(this);
         return null;

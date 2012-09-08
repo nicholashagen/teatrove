@@ -85,8 +85,12 @@ public class Type implements java.io.Serializable {
     /** Type for representing non-null Strings, provided as a convenience */
     public static final Type NON_NULL_STRING_TYPE = STRING_TYPE.toNonNull();
 
+    /** Type for representing derived types. */
+    public static final Type DERIVED_TYPE = new Type(Object.class);
+
     private static final Method[] EMPTY_METHOD_ARRAY = new Method[0];
 
+    private final boolean mDynamic;
     private final String mClassName;
     private final Class<?> mObjectClass;
     private final Class<?> mNaturalClass;
@@ -108,7 +112,17 @@ public class Type implements java.io.Serializable {
         this(type, (java.lang.reflect.Type) null);
     }
 
+    public Type(String name) {
+        mDynamic = true;
+        mClassName = name;
+        mPrimitive = false;
+        mObjectClass = Object.class;
+        mNaturalClass = Object.class;
+        mGenericType = new GenericType(mNaturalClass, null);
+    }
+
     public Type(Class<?> type, java.lang.reflect.Type generic) {
+        mDynamic = false;
         mNaturalClass = type;
         mClassName = type.getName();
         mPrimitive = type.isPrimitive();
@@ -119,6 +133,7 @@ public class Type implements java.io.Serializable {
     public Type(GenericType type) {
         Class<?> natural = type.getRawType().getType();
 
+        mDynamic = false;
         mGenericType = type;
         mNaturalClass = natural;
         mClassName = natural.getName();
@@ -132,6 +147,7 @@ public class Type implements java.io.Serializable {
 
     private Type(Class<?> object, Class<?> natural,
                  java.lang.reflect.Type generic) {
+        mDynamic = false;
         mObjectClass = object;
         mNaturalClass = natural;
         mClassName = natural.getName();
@@ -140,6 +156,7 @@ public class Type implements java.io.Serializable {
     }
 
     private Type(GenericType type, Class<?> natural) {
+        mDynamic = false;
         mGenericType = type;
         mNaturalClass = natural;
         mClassName = natural.getName();
@@ -164,6 +181,7 @@ public class Type implements java.io.Serializable {
     }
 
     Type(Type type) {
+        mDynamic = type.mDynamic;
         mClassName = type.mClassName;
         mGenericType = type.mGenericType;
         mObjectClass = type.mObjectClass;
@@ -176,6 +194,10 @@ public class Type implements java.io.Serializable {
         mArrayAccessMethods = type.mArrayAccessMethods;
         mCheckedForIteration = type.mCheckedForIteration;
         mIterationElementType = type.mIterationElementType;
+    }
+
+    public boolean isDynamic() {
+        return mDynamic;
     }
 
     public String getClassName() {

@@ -10,6 +10,10 @@ compiler. A much smaller amount of code supports Tea in a runtime environment.
 
 Change History
 
+4.2.0 to 4.3.0
+=============================
+- Fix #122 adding dynamic types and classes
+
 4.1.2 to 4.2.0
 =============================
 - Fix #188 fixing cluster/peers and compilation exceptions

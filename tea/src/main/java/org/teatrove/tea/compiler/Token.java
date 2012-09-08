@@ -306,7 +306,7 @@ public class Token implements java.io.Serializable {
             break;
         case 'c':
             if (matches(word, "call")) return CALL;
-            if (matches(word, "class___")) return CLASS;
+            if (matches(word, "class")) return CLASS;
             if (matches(word, "continue")) return CONTINUE;
             break;
         case 'd':
@@ -577,7 +577,7 @@ public class Token implements java.io.Serializable {
             "as",
             "import",
             "continue",
-            "class___"
+            "class"
         };
 
         public static final String[] TOKEN_CODES =

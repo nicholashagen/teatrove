@@ -66,6 +66,7 @@ public interface NodeVisitor {
 
     public Object visit(Expression node);
     public Object visit(ParenExpression node);
+    public Object visit(NewClassExpression node);
     public Object visit(NewArrayExpression node);
     public Object visit(FunctionCallExpression node);
     public Object visit(TemplateCallExpression node);

@@ -18,9 +18,9 @@ package org.teatrove.teatools;
 
 import java.io.CharArrayReader;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.io.Reader;
 
+import org.teatrove.tea.compiler.CodeOutput;
 import org.teatrove.tea.compiler.CompilationUnit;
 import org.teatrove.tea.compiler.Compiler;
 
@@ -67,15 +67,8 @@ public class TextCompilationUnit extends CompilationUnit {
         return new CharArrayReader(getText());                    
     }
     
-    /**
-     * Always returns null
-     */
     @Override
-    public OutputStream getOutputStream() throws IOException {
-        // No code generation needed
+    public CodeOutput getOutput() {
         return null;
     }
-    
-    @Override
-    public void resetOutputStream() {}
 }

@@ -17,10 +17,8 @@
 package org.teatrove.tea.compiler;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.util.Vector;
 
-import org.teatrove.tea.parsetree.Node;
 import org.teatrove.tea.parsetree.Template;
 
 /**
@@ -48,7 +46,7 @@ public abstract class CodeGenerator {
         return mTree;
     }
 
-    public abstract void writeTo(OutputStream out) throws IOException;
+    public abstract void writeTo(CodeOutput out) throws IOException;
     
     protected void dispatchCompileError(CompileEvent e) {
         synchronized (mListeners) {

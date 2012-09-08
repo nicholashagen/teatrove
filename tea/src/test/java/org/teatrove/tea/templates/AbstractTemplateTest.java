@@ -36,6 +36,16 @@ public abstract class AbstractTemplateTest {
     protected MergedContextSource context ;
     protected AtomicInteger counter = new AtomicInteger(0);
     protected List<CompileListener> listeners = new ArrayList<CompileListener>();
+    
+    protected ThreadLocal<CompilerInfo> compilerInfo =
+        new ThreadLocal<CompilerInfo>() {
+
+            @Override
+            protected CompilerInfo initialValue() {
+                return new CompilerInfo();
+            }
+        
+    };
 
     public AbstractTemplateTest() {
         contexts = new HashMap<String, ContextSource>();
@@ -126,6 +136,28 @@ public abstract class AbstractTemplateTest {
         return new ClassInjector(getContext().getContextType().getClassLoader());
     }
 
+    protected Compiler getCompiler(File destDir) {
+        CompilerInfo info = compilerInfo.get();
+        if (info.compiler == null) {
+            info.compiler = new Compiler(getInjector(), PKG, destDir);
+            info.provider = new StringCompilationProvider();
+            info.compiler.addCompilationProvider(info.provider);
+    
+            // setup context
+            info.compiler.setRuntimeContext(getContext().getContextType());
+    
+            // setup error handler
+            info.compiler.addCompileListener(createCompileListener());
+        }
+        
+        return info.compiler;
+    }
+    
+    protected StringCompilationProvider getProvider() {
+        CompilerInfo info = compilerInfo.get();
+        return info.provider;
+    }
+    
     public void compileFiles(String... templates)
         throws Exception {
 
@@ -146,18 +178,10 @@ public abstract class AbstractTemplateTest {
 
         // create compiler
         File destDir = (ENABLE_CODEGEN ? new File(DEST) : null);
-        Compiler compiler = new Compiler(getInjector(), PKG, destDir);
-        StringCompilationProvider provider = new StringCompilationProvider();
-        compiler.addCompilationProvider(provider);
-
-        // setup context
-        compiler.setRuntimeContext(getContext().getContextType());
-
-        // setup error handler
-        compiler.addCompileListener(createCompileListener());
+        Compiler compiler = getCompiler(destDir);
 
         // add sources for templates
-        provider.setTemplateSource(template, source);
+        getProvider().setTemplateSource(template, source);
 
         // compile templates
         String[] results = compiler.compile(template);
@@ -227,10 +251,21 @@ public abstract class AbstractTemplateTest {
 
     public String getTemplateSource(int index,
                                     String source, String signature) {
-        return "<% template " + getTemplateName(index) +
+        return getTemplateSource(index, "template", source, signature);
+    }
+    
+    public String getTemplateSource(int index, String type,
+                                    String source, String signature) {
+        return "<% " + type + " " + getTemplateName(index) +
             "(" + signature + ") " + source;
     }
 
+    public String getTemplateSource(String name, String type,
+                                    String source, String signature) {
+        return "<% " + type + " " + name +
+            "(" + signature + ") " + source;
+    }
+    
     public String executeSource(String source, Object... params)
         throws Exception {
 
@@ -248,12 +283,33 @@ public abstract class AbstractTemplateTest {
                        getTemplateSource(index, source, signature), params);
     }
 
+    public void compileSource(String name, String type, String signature)
+        throws Exception {
+
+        compile(name, getTemplateSource(name, type, "", signature));
+    }
+    
+    public void compileSource(String name, String type, String signature,
+                              String source)
+        throws Exception {
+
+        compile(name, getTemplateSource(name, type, source, signature));
+    }
+    
     public String execute(String template, String source, Object... params)
         throws Exception {
 
-        // compile and execute
-        compile(template, source);
-        return _execute(template, params);
+        try {
+            // compile and execute
+            compile(template, source);
+            return _execute(template, params);
+        }
+        finally {
+            // reset states
+            CompilerInfo info = compilerInfo.get();
+            info.compiler = null;
+            info.provider = null;
+        }
     }
 
     protected String _execute(String template, Object... params)
@@ -367,5 +423,10 @@ public abstract class AbstractTemplateTest {
             }
         }
         
+    }
+    
+    protected static class CompilerInfo {
+        Compiler compiler;
+        StringCompilationProvider provider;
     }
 }

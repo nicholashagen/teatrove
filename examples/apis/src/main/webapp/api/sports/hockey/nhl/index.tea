@@ -1,0 +1,10 @@
+<% template index(#api.model.League league)
+
+league.name = 'National Hockey League'
+league.abbreviation = 'nhl'
+league.id = 90
+league.groupId = 9
+league.shortName = 'NHL'
+league.season = call api.util.createSeason()
+league.week = call api.util.createWeek()
+    

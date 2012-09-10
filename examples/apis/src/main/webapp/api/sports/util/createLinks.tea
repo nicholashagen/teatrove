@@ -1,0 +1,23 @@
+<% template createLinks(String sport)
+
+links = ##(
+    'api' : ##(
+        'sports' : ##(
+            'href' : "http://api.espn.com/v1/sports/" & sport
+        ),
+        'news' : ##(
+            'href' : "http://api.espn.com/v1/sports/" & sport & "/news"
+        ),
+        'notes' : ##(
+            'href' : "http://api.espn.com/v1/sports/" & sport & "/news/notes"
+        ),
+        'headlines' : ##(
+            'href' : "http://api.espn.com/v1/sports/" & sport & "/news/headlines"
+        ),
+        'events' : ##(
+            'href' : "http://api.espn.com/v1/sports/" & sport & "/events"
+        )
+    )
+)
+
+links

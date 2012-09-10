@@ -1,0 +1,15 @@
+<% template index()
+
+_sports_ = #('baseball', 'football', 'hockey', 'basketball')
+
+sports = createArrayList()
+foreach (sport in _sports_) {
+    model = ##api.model.Sport{ }
+    dynamicTemplateCall('sports.' & sport & '.index', #(model))
+    _ = add(sports, model)
+}
+
+response = call api.util.createResponse()
+response.sports = sports.toArray()
+
+'<pre>' dump(response) '</pre>'

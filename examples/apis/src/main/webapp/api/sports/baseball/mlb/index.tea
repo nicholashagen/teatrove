@@ -1,0 +1,10 @@
+<% template index(#api.model.League league)
+
+league.name = 'Major League Baseball'
+league.abbreviation = 'mlb'
+league.id = 10
+league.groupId = 9
+league.shortName = 'MLB'
+league.season = call api.util.createSeason()
+league.week = call api.util.createWeek()
+    

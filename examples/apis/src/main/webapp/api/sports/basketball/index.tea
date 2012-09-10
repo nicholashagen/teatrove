@@ -1,0 +1,8 @@
+<% template index(#api.model.Sport sport)
+
+leagueNames = #('nba')
+
+sport.name = 'basketball'
+sport.id = 40
+sport.links = call api.sports.util.createLinks('basketball')
+sport.leagues = call api.sports.util.createLeagues('basketball', leagueNames)

@@ -1,0 +1,11 @@
+<% template createLeagues(String sport, String[] leagueNames)
+
+leagues = createArrayList()
+foreach (leagueName in leagueNames) {
+    model = ##api.model.League{ }
+    dynamicTemplateCall('sports.' & sport & '.' & leagueName & '.index', #(model))
+    _ = add(leagues, model)
+}
+
+result = leagues.toArray()
+result

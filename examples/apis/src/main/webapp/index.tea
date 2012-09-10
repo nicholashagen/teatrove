@@ -1,0 +1,24 @@
+<% template index()
+
+response = ##api.Response{
+    timestamp : currentDate(),
+    status : 'success',
+    links : ##(
+        'api' : ##(
+            'news' : ##(
+                'href' : 'http://api.espn.com/v1/sports/news'
+             ),
+             'headlines' : ##(
+                'href' : 'http://api.espn.com/v1/sports/news/headlines'
+             ),
+             'notes' : ##(
+                'href' : 'http://api.espn.com/v1/sports/news/notes'
+             ),
+             'events' : ##(
+                'href' : 'http://api.espn.com/v1/sports/events'
+             )
+        )
+    )
+}
+
+'<pre>' dump(response) '</pre>'

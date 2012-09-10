@@ -1,0 +1,11 @@
+<% template createSeason()
+
+season = ##api.model.Season{
+    year : currentDate().year + 1900,
+    type : 2,
+    description : 'regular',
+    startDate : changeDate(currentDate(), -7),
+    endDate : changeDate(currentDate(), 7)
+}
+
+season

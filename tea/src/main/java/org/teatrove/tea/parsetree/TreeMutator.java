@@ -105,7 +105,7 @@ public abstract class TreeMutator implements NodeVisitor {
         return node;
     }
         
-    public Object visit(AssignmentStatement node) {
+    public Object visit(AssignmentExpression node) {
         node.getLValue().accept(this);
         node.setRValue(visitExpression(node.getRValue()));
         

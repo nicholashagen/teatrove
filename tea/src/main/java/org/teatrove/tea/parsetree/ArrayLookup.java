@@ -34,7 +34,7 @@ import java.lang.reflect.Method;
  * @author Brian S O'Neill
  * @see org.teatrove.tea.util.BeanAnalyzer
  */
-public class ArrayLookup extends Expression implements NullSafe {
+public class ArrayLookup extends Expression implements NullSafe, Assignable {
     private static final long serialVersionUID = 1L;
 
     private Expression mExpr;

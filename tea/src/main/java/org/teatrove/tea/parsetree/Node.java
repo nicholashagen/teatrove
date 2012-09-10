@@ -83,6 +83,10 @@ public abstract class Node implements Cloneable, java.io.Serializable {
      * information.
      */
     public String toString() {
+        return toString(null);
+    }
+    
+    public String toString(String info) {
         String name = getClass().getName();
         int index = name.indexOf(cPackage);
         if (index >= 0) {
@@ -95,10 +99,20 @@ public abstract class Node implements Cloneable, java.io.Serializable {
         if (mInfo == null) {
             return name + '@' + identityCode;
         }
+        else if (info == null) {
+            return
+                name +
+                '(' +
+                mInfo.getLine() + ',' + ' ' +
+                mInfo.getStartPosition() + ',' + ' ' +
+                mInfo.getEndPosition() +
+                ')' + '@' + identityCode;
+        }
         else {
             return
                 name +
                 '(' +
+                info + ',' + ' ' +
                 mInfo.getLine() + ',' + ' ' +
                 mInfo.getStartPosition() + ',' + ' ' +
                 mInfo.getEndPosition() +

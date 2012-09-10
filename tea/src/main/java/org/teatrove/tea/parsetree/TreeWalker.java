@@ -100,7 +100,7 @@ public abstract class TreeWalker implements NodeVisitor {
         return null;
     }
         
-    public Object visit(AssignmentStatement node) {
+    public Object visit(AssignmentExpression node) {
         node.getLValue().accept(this);
         node.getRValue().accept(this);
         

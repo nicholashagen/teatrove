@@ -55,4 +55,8 @@ public class Name extends Node {
             return false;
         }
     }
+    
+    public String toString() {
+        return toString(mName);
+    }
 }

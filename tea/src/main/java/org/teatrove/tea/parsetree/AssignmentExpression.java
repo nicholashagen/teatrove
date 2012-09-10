@@ -19,23 +19,25 @@ package org.teatrove.tea.parsetree;
 import org.teatrove.tea.compiler.SourceInfo;
 
 /**
- * AssignmentStatements can only assign values to variables, and not to
- * array elements. AssignmentStatements are not expressions as they are in
- * C or Java, and thus chaining is not allowed. i.e. a = b = c;
+ * AssignmentStatements act on {@link Assignable} expressions on the left
+ * assigning a given {@link Expression} on the right.  Typically, the left
+ * expressions are variables, lookups or indexed properties (arrays, maps, etc).
  *
  * @author Brian S O'Neill
  */
-public class AssignmentStatement extends Statement {
+public class AssignmentExpression extends Expression {
     private static final long serialVersionUID = 1L;
 
-    private VariableRef mLvalue;
+    private Expression mLvalue;
     private Expression mRvalue;
 
-    public AssignmentStatement(SourceInfo info,
-                               VariableRef lvalue,
-                               Expression rvalue) {
+    public AssignmentExpression(SourceInfo info,
+                                Expression lvalue, Expression rvalue) {
         super(info);
-
+        if (!(lvalue instanceof Assignable)) {
+            throw new IllegalStateException("lvalue must be assignable");
+        }
+        
         mLvalue = lvalue;
         mRvalue = rvalue;
     }
@@ -45,14 +47,22 @@ public class AssignmentStatement extends Statement {
     }
 
     public Object clone() {
-        AssignmentStatement as = (AssignmentStatement)super.clone();
-        as.mLvalue = (VariableRef)mLvalue.clone();
+        AssignmentExpression as = (AssignmentExpression) super.clone();
+        as.mLvalue = (Expression)mLvalue.clone();
         as.mRvalue = (Expression)mRvalue.clone();
         return as;
     }
 
-    public VariableRef getLValue() {
+    public Expression getLValue() {
         return mLvalue;
+    }
+    
+    public void setLValue(Expression lvalue) {
+        if (!(lvalue instanceof Assignable)) {
+            throw new IllegalStateException("lvalue must be assignable");
+        }
+        
+        mLvalue = lvalue;
     }
 
     public Expression getRValue() {

@@ -24,7 +24,7 @@ import org.teatrove.tea.compiler.SourceInfo;
  * @author Brian S O'Neill
  * @see Variable
  */
-public class VariableRef extends Expression implements NullSafe {
+public class VariableRef extends Expression implements NullSafe, Assignable {
     private static final long serialVersionUID = 1L;
 
     private String mName;
@@ -78,5 +78,10 @@ public class VariableRef extends Expression implements NullSafe {
     
     public void setNullSafe(boolean nullSafe) {
         mNullSafe = nullSafe;
+    }
+    
+    @Override
+    public String toString() {
+        return toString(mName);
     }
 }

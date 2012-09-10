@@ -54,7 +54,7 @@ public interface NodeVisitor {
     public Object visit(Statement node);
     public Object visit(StatementList node);
     public Object visit(Block node);
-    public Object visit(AssignmentStatement node);
+    public Object visit(AssignmentExpression node);
     public Object visit(ForeachStatement node);
     public Object visit(IfStatement node);
     public Object visit(SubstitutionStatement node);

@@ -33,7 +33,7 @@ import org.teatrove.tea.compiler.Type;
  * @author Brian S O'Neill
  * @see java.beans.Introspector
  */
-public class Lookup extends Expression implements NullSafe {
+public class Lookup extends Expression implements NullSafe, Assignable {
     private static final long serialVersionUID = 1L;
 
     private Expression mExpr;
@@ -105,11 +105,11 @@ public class Lookup extends Expression implements NullSafe {
      * the expression type is an array, the read method is null. A code
      * generator must still be able to get the length of the array.
      */
-    public Method getReadMethod() {
+    public Method getReadWriteMethod() {
         return mMethod;
     }
 
-    public void setReadMethod(Method m) {
+    public void setReadWriteMethod(Method m) {
         mMethod = m;
     }
 
@@ -118,11 +118,11 @@ public class Lookup extends Expression implements NullSafe {
      * in by the type checker when a static constant is being referenced rather
      * than a variable lookup.
      */
-    public Field getReadProperty() {
+    public Field getReadWriteProperty() {
     	return mProperty;
     }
     
-    public void setReadProperty(Field f) {
+    public void setReadWriteProperty(Field f) {
     	mProperty = f;
     }
     
@@ -132,5 +132,10 @@ public class Lookup extends Expression implements NullSafe {
     
     public void setNullSafe(boolean nullSafe) {
         mNullSafe = nullSafe;
+    }
+    
+    @Override
+    public String toString() {
+        return toString(mExpr.toString() + "." + mLookupName.toString());
     }
 }

@@ -16,10 +16,11 @@
 
 package org.teatrove.tea.parsetree;
 
+
 /**
- * This is a market interface used in conjunction with the
- * {@link AssignmentStatement} to denote that a particular 
- * {@link Expression} supports assignment.
+ * This is a marker interface that all assignable expressions implements and is 
+ * used in conjunction with the {@link AssignmentExpression} to denote that a 
+ * particular {@link Expression} supports assignment.
  */
 public interface Assignable {
 

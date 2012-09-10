@@ -16,18 +16,17 @@
 
 package org.teatrove.tea.compiler;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
 import java.io.IOException;
-import java.io.Reader;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Stack;
 import java.util.Vector;
 
 import org.teatrove.tea.parsetree.AndExpression;
 import org.teatrove.tea.parsetree.ArithmeticExpression;
 import org.teatrove.tea.parsetree.ArrayLookup;
-import org.teatrove.tea.parsetree.AssignmentStatement;
+import org.teatrove.tea.parsetree.Assignable;
+import org.teatrove.tea.parsetree.AssignmentExpression;
 import org.teatrove.tea.parsetree.Block;
 import org.teatrove.tea.parsetree.BooleanLiteral;
 import org.teatrove.tea.parsetree.BreakStatement;
@@ -70,7 +69,6 @@ import org.teatrove.tea.parsetree.TernaryExpression;
 import org.teatrove.tea.parsetree.TypeName;
 import org.teatrove.tea.parsetree.Variable;
 import org.teatrove.tea.parsetree.VariableRef;
-import org.teatrove.trove.io.SourceReader;
 
 /**
  * A Parser creates the parse tree for a template by reading tokens emitted by
@@ -587,7 +585,9 @@ public class Parser {
                 Variable v = parseVariableDeclaration(true);
                 VariableRef lvalue = new VariableRef(info, v.getName());
                 lvalue.setVariable(v);
-                Expression rvalue = new NullLiteral(info);   // Empty expression is null assignment
+                
+                // Empty expression is null assignment
+                Expression rvalue = new NullLiteral(info);
 
                 if (peek().getID() == Token.ASSIGN) {
                     read();
@@ -595,8 +595,11 @@ public class Parser {
                     info = info.setEndPosition(rvalue.getSourceInfo());
                 }
 
-                st = new AssignmentStatement(info, lvalue, rvalue);
+                st = new ExpressionStatement(
+                    new AssignmentExpression(info, lvalue, rvalue)
+                );
                 break;
+            /*
             case Token.IDENT:
                 if (peek().getID() == Token.ASSIGN) {
                     st = parseAssignmentStatement(token);
@@ -605,6 +608,7 @@ public class Parser {
                     st = new ExpressionStatement(parseExpression(token));
                 }
                 break;
+            */
             case Token.ELLIPSIS:
                 st = new SubstitutionStatement(token.getSourceInfo());
                 break;
@@ -755,44 +759,6 @@ public class Parser {
             (info, loopVar, range, endRange, reverse, body);
     }
 
-    // When this is called, the identifier token has already been read.
-    private AssignmentStatement parseAssignmentStatement(Token token)
-        throws IOException {
-
-        // TODO: allow lvalue to support dot notations
-        // ie: field = x (store local variable)
-        //     obj.field = x (obj.setField)
-        //     obj.field.field = x (obj.getField().setField)
-        //     array[idx] = x (array[idx])
-        //     list[idx] = x (list.set(idx, x))
-        //     map[key] = x (map.put(key, x))
-        //     map[obj.name] = x (map.put(obj.getName(), x)
-        SourceInfo info = token.getSourceInfo();
-        VariableRef lvalue = parseLValue(token);
-
-        if (peek().getID() == Token.ASSIGN) {
-            read();
-        }
-        else {
-            error("assignment.equals.expected", peek());
-        }
-
-        Expression rvalue = parseExpression();
-
-        info = info.setEndPosition(rvalue.getSourceInfo());
-
-        // Start mod for 'as' keyword for declarative typing
-        if (peek().getID() == Token.AS) {
-            read();
-            TypeName typeName = parseTypeName();
-            SourceInfo info2 = peek().getSourceInfo();
-            lvalue.setVariable(new Variable(info2, lvalue.getName(), typeName, true));
-        }
-        // End mod
-
-        return new AssignmentStatement(info, lvalue, rvalue);
-    }
-
     /**
      * @param bracketed True if the list is bounded by brackets instead of
      * parenthesis.
@@ -899,7 +865,51 @@ public class Parser {
     }
 
     private Expression parseExpression(Token token) throws IOException {
-        return parseTernaryExpression(token);
+        return parseAssignmentExpression(token);
+    }
+    
+    private Expression parseAssignmentExpression(Token token) throws IOException {
+        SourceInfo info = token.getSourceInfo();
+        Expression expr = parseTernaryExpression(token);
+        
+        if (peek().getID() == Token.ASSIGN) {
+            Stack<Expression> lvalues = new Stack<Expression>();
+
+            while (peek().getID() == Token.ASSIGN) {
+                read();
+                if (!(expr instanceof Assignable)) {
+                    error("assignment.not.assignable", token);
+                }
+                
+                lvalues.push(expr);
+                expr = parseTernaryExpression(read());
+            }
+
+            // Start mod for 'as' keyword for declarative typing
+            if (peek().getID() == Token.AS) {
+                read();
+                TypeName typeName = parseTypeName();
+                SourceInfo info2 = peek().getSourceInfo();
+                
+                for (Expression lvalue : lvalues) {
+                    if (lvalue instanceof VariableRef) {
+                        VariableRef lref = (VariableRef) lvalue;
+                        lref.setVariable(new Variable(info2, lref.getName(), 
+                                                      typeName, true));
+                    }
+                }
+            }
+            // End mod
+
+            while (!lvalues.isEmpty()) {
+                Expression lvalue = lvalues.pop();
+                info = lvalue.getSourceInfo();
+                info.setEndPosition(expr.getSourceInfo());
+                expr = new AssignmentExpression(info, lvalue, expr);
+            }
+        }
+
+        return expr;
     }
 
     private Expression parseTernaryExpression(Token token) throws IOException {
@@ -992,10 +1002,12 @@ public class Parser {
             token = peek();
 
             switch (token.getID()) {
+            /*
             case Token.ASSIGN:
                 error("equality.misuse.assign", token);
                 token = new Token(token.getSourceInfo(), Token.EQ);                // fall-through
                 //$FALL-THROUGH$
+            */
             case Token.EQ:
             case Token.NE:
                 read();
@@ -1334,7 +1346,7 @@ public class Parser {
             }
             else {
                 error("factor.rparen.expected", token);
-                info = info.setEndPosition(expr.getSourceInfo());
+                info = info.setEndPosition(expr == null ? null : expr.getSourceInfo());
             }
 
             if (expr == null) {
@@ -1515,7 +1527,7 @@ public class Parser {
         ExpressionList list =
             parseList(Token.LPAREN, Token.RPAREN, false);
         info = info.setEndPosition(list.getSourceInfo());
-
+        
         // Check if a block is being passed in the call.
         Block subParam = null;
         if (peek().getID() == Token.LBRACE) {
@@ -1531,43 +1543,6 @@ public class Parser {
         }
         catch (Exception exception) {
             throw new IOException("unable to create ctor", exception);
-        }
-    }
-
-    /** Test program */
-    public static void main(String[] arg) throws Exception {
-        Tester.test(arg);
-    }
-
-    /**
-     *
-     * @author Brian S O'Neill
-     */
-    private static class Tester implements CompileListener {
-        public static void test(String[] arg) throws Exception {
-            new Tester(arg[0]);
-        }
-
-        public Tester(String filename) throws Exception {
-            Reader file = new BufferedReader(new FileReader(filename));
-            Scanner scanner = new Scanner(new SourceReader(file, "<%", "%>"));
-            scanner.addCompileListener(this);
-            Parser parser = new Parser(scanner);
-            parser.addCompileListener(this);
-            Template tree = parser.parse();
-
-            if (tree != null) {
-                TreePrinter printer = new TreePrinter(tree);
-                printer.writeTo(System.out);
-            }
-        }
-
-        public void compileError(CompileEvent e) {
-            System.err.println(e.getDetailedMessage());
-        }
-        
-        public void compileWarning(CompileEvent e) {
-            System.out.println(e.getDetailedMessage());
         }
     }
 }

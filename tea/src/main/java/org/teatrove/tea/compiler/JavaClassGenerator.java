@@ -39,7 +39,7 @@ import java.util.Stack;
 import org.teatrove.tea.parsetree.AndExpression;
 import org.teatrove.tea.parsetree.ArithmeticExpression;
 import org.teatrove.tea.parsetree.ArrayLookup;
-import org.teatrove.tea.parsetree.AssignmentStatement;
+import org.teatrove.tea.parsetree.AssignmentExpression;
 import org.teatrove.tea.parsetree.Block;
 import org.teatrove.tea.parsetree.BooleanLiteral;
 import org.teatrove.tea.parsetree.BreakStatement;
@@ -1329,60 +1329,79 @@ public class JavaClassGenerator extends CodeGenerator {
             return null;
         }
 
-        public Object visit(AssignmentStatement node) {
-            VariableRef lvalue = node.getLValue();
+        public Object visit(AssignmentExpression node) {
+            Expression lvalue = node.getLValue();
             Type ltype = lvalue.getType();
-            Variable v = lvalue.getVariable();
-            LocalVariable local = getLocalVariable(v);
-
+            
             final Expression rvalue = node.getRValue();
             Type rtype = rvalue.getType();
 
-            // Special optimization to convert a = a + n to a += n
-            if (local != null &&
-                ltype.getNaturalClass() == int.class &&
-                rtype.getNaturalClass() == int.class &&
-                rvalue instanceof ArithmeticExpression) {
+            generate(rvalue);
+            final LocalVariable rlocal = mBuilder.createLocalVariable(
+                null, makeDesc(rvalue.getType())
+            );
+            mBuilder.storeLocal(rlocal);
+            
+            if (lvalue instanceof VariableRef) {
+                Variable v = ((VariableRef) lvalue).getVariable();
+                LocalVariable local = getLocalVariable(v);                
 
-                ArithmeticExpression arith = (ArithmeticExpression)rvalue;
-                int ID = arith.getOperator().getID();
-                if (ID == Token.PLUS || ID == Token.MINUS) {
-                    Expression left = arith.getLeftExpression();
-                    Expression right = arith.getRightExpression();
-                    Integer amount = null;
-                    if (left instanceof VariableRef &&
-                        right.isValueKnown()) {
-                        if ( ((VariableRef)left).getVariable() == v ) {
-                            amount = (Integer)right.getValue();
+                // Special optimization to convert a = a + n to a += n
+                if (local != null &&
+                    ltype.getNaturalClass() == int.class &&
+                    rtype.getNaturalClass() == int.class &&
+                    rvalue instanceof ArithmeticExpression) {
+    
+                    ArithmeticExpression arith = (ArithmeticExpression)rvalue;
+                    int ID = arith.getOperator().getID();
+                    if (ID == Token.PLUS || ID == Token.MINUS) {
+                        Expression left = arith.getLeftExpression();
+                        Expression right = arith.getRightExpression();
+                        Integer amount = null;
+                        if (left instanceof VariableRef &&
+                            right.isValueKnown()) {
+                            if ( ((VariableRef)left).getVariable() == v ) {
+                                amount = (Integer)right.getValue();
+                            }
                         }
-                    }
-                    else if (right instanceof VariableRef &&
-                             left.isValueKnown() &&
-                             ID != Token.MINUS) {
-                        if ( ((VariableRef)right).getVariable() == v ) {
-                            amount = (Integer)left.getValue();
+                        else if (right instanceof VariableRef &&
+                                 left.isValueKnown() &&
+                                 ID != Token.MINUS) {
+                            if ( ((VariableRef)right).getVariable() == v ) {
+                                amount = (Integer)left.getValue();
+                            }
                         }
-                    }
-
-                    if (amount != null) {
-                        int i = amount.intValue();
-                        if (ID == Token.PLUS) {
-                            mBuilder.integerIncrement(local, i);
+    
+                        if (amount != null) {
+                            int i = amount.intValue();
+                            if (ID == Token.PLUS) {
+                                mBuilder.integerIncrement(local, i);
+                            }
+                            else {
+                                mBuilder.integerIncrement(local, -i);
+                            }
+                            mBuilder.loadLocal(local);
+                            return null;
                         }
-                        else {
-                            mBuilder.integerIncrement(local, -i);
-                        }
-                        return null;
                     }
                 }
+
+                storeToVariable(v, new Runnable() {
+                    public void run() {
+                        mBuilder.loadLocal(rlocal);
+                    }
+                });
+            }
+            else if (lvalue instanceof ArrayLookup) {
+                // TODO: list.set(x, rvalue)
+                // TODO: map.put(x, rvalue)
+                // TODO: array[x] = rvalue
+            }
+            else if (lvalue instanceof Lookup) {
+                processLookup((Lookup) lvalue, false, rlocal);
             }
 
-            storeToVariable(v, new Runnable() {
-                public void run() {
-                    generate(rvalue);
-                }
-            });
-
+            mBuilder.loadLocal(rlocal);
             return null;
         }
 
@@ -1718,8 +1737,8 @@ public class JavaClassGenerator extends CodeGenerator {
                 Expression clonedNode = (Expression)node.clone();
                 clonedNode.setType(Type.OBJECT_TYPE);
 
-                AssignmentStatement assn =
-                    new AssignmentStatement(info, ref, clonedNode);
+                AssignmentExpression assn =
+                    new AssignmentExpression(info, ref, clonedNode);
 
                 // Move this statement into the static initializer
                 mInitializerStatements.add(assn);
@@ -1798,8 +1817,8 @@ public class JavaClassGenerator extends CodeGenerator {
                 Expression clonedNode = (Expression)node.clone();
                 clonedNode.setType(initialType);
 
-                AssignmentStatement assn =
-                    new AssignmentStatement(info, ref, clonedNode);
+                AssignmentExpression assn =
+                    new AssignmentExpression(info, ref, clonedNode);
 
                 // Move this statement into the static initializer
                 mInitializerStatements.add(assn);
@@ -1932,6 +1951,13 @@ public class JavaClassGenerator extends CodeGenerator {
         }
 
         public Object visit(final Lookup node) {
+            return processLookup(node, true, null);
+        }
+        
+        protected Object processLookup(final Lookup node, 
+                                       final boolean reading,
+                                       final LocalVariable param) {
+            
             // generate expression
             final Expression expr = node.getExpression();
             generate(expr);
@@ -1942,17 +1968,29 @@ public class JavaClassGenerator extends CodeGenerator {
             // handle class references
             if (expr instanceof TypeExpression &&
                 "class".equals(node.getLookupName().getName())) {
+
+                if (reading) {
+                    mBuilder.loadClass(makeDesc(expr.getType()));
+                }
+                else { error("lookup.not.writable", node); }
                 
-                mBuilder.loadClass(makeDesc(expr.getType()));
                 return null;
             }
             
             // generate static field lookup if provided
-            Field field = node.getReadProperty();
+            Field field = node.getReadWriteProperty();
             if (field != null) {
-            	mBuilder.loadStaticField(field.getDeclaringClass().getName(), 
-            			                 field.getName(), 
-            			                 makeDesc(node.getType()));
+                if (reading) {
+                	mBuilder.loadStaticField(field.getDeclaringClass().getName(), 
+                			                 field.getName(), 
+                			                 makeDesc(node.getType()));
+                }
+                else {
+                    mBuilder.loadLocal(param);
+                    mBuilder.storeStaticField(field.getDeclaringClass().getName(), 
+                                              field.getName(), 
+                                              makeDesc(node.getType()));
+                }
             	
             	return null;
             }
@@ -1961,20 +1999,28 @@ public class JavaClassGenerator extends CodeGenerator {
             generateNullSafe(node, expr, new NullSafeCallback() {
                 public Type execute() {
                     Type type = null;
-                    Method readMethod = node.getReadMethod();
+                    Method readWriteMethod = node.getReadWriteMethod();
                     String lookupName = node.getLookupName().getName();
                     
-                    if (readMethod == null && 
+                    if (readWriteMethod == null && 
                         expr.getType() instanceof DynamicType) {
                         
                         String className = expr.getType().getClassName();
                         DynamicType dynamic = (DynamicType) expr.getType();
                         Type retType = dynamic.getParameterType(lookupName);
 
-                        String methodName =
-                            "get" + Character.toUpperCase(lookupName.charAt(0)) + 
+                        String methodName = 
+                            Character.toUpperCase(lookupName.charAt(0)) + 
                             lookupName.substring(1);
 
+                        if (reading) { methodName = "get".concat(methodName); } 
+                        else { methodName = "set".concat(methodName); }
+
+                        // put the param on the stack if setter method
+                        if (!reading) {
+                            mBuilder.loadLocal(param);
+                        }
+                        
                         type = retType;
                         mBuilder.invokeVirtual(className, methodName,
                                                makeDesc(retType), new TypeDesc[0]);
@@ -1982,19 +2028,41 @@ public class JavaClassGenerator extends CodeGenerator {
                     else if (expr.getType().getObjectClass().isArray() &&
                              lookupName.equals("length")) {
 
-                        type = Type.INT_TYPE;
-                        mBuilder.arrayLength();
+                        if (reading) {
+                            type = Type.INT_TYPE;
+                            mBuilder.arrayLength();
+                        }
+                        else { error("lookup.not.writable", node); }
                     }
-                    else if (readMethod != null) {
-                        if (Modifier.isStatic(readMethod.getModifiers())) {
+                    else if (readWriteMethod != null) {
+                        if (Modifier.isStatic(readWriteMethod.getModifiers())) {
                             // Discard the object to call method on.
                             mBuilder.pop();
                         }
 
-                        type = new Type(readMethod.getReturnType(), 
-                                        readMethod.getGenericReturnType());
+                        if (reading) {
+                            type = new Type(readWriteMethod.getReturnType(), 
+                                            readWriteMethod.getGenericReturnType());
+                        }
+                        else {
+                            Class<?>[] pclazz = readWriteMethod.getParameterTypes();
+                            java.lang.reflect.Type[] ptypes = 
+                                readWriteMethod.getGenericParameterTypes();
+                            
+                            if (ptypes == null || ptypes.length == 0) {
+                                type = new Type(pclazz[0]);
+                            }
+                            else {
+                                type = new Type(pclazz[0], ptypes[0]);
+                            }
+                        }
+
+                        // put the param on the stack if setter method
+                        if (!reading) {
+                            mBuilder.loadLocal(param);
+                        }
                         
-                        mBuilder.invoke(readMethod);
+                        mBuilder.invoke(readWriteMethod);
                     }
                     
                     return type;
@@ -4892,11 +4960,11 @@ public class JavaClassGenerator extends CodeGenerator {
             }
         }
         
-        private AssignmentStatement createAssignment(Expression expr) {
+        private AssignmentExpression createAssignment(Expression expr) {
             return createAssignment("tmp" + mTemporary++, expr);
         }
         
-        private AssignmentStatement createAssignment(String name, Expression expr) {
+        private AssignmentExpression createAssignment(String name, Expression expr) {
             // get info
             Type type = expr.getType();
             SourceInfo info = expr.getSourceInfo();
@@ -4910,7 +4978,7 @@ public class JavaClassGenerator extends CodeGenerator {
             ref.setVariable(var);
             
             // create assignment
-            AssignmentStatement stmt = new AssignmentStatement(info, ref, expr);
+            AssignmentExpression stmt = new AssignmentExpression(info, ref, expr);
             generate(stmt);
             
             // return assignment

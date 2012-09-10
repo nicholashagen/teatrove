@@ -35,7 +35,7 @@ import org.teatrove.tea.TypedElement;
 import org.teatrove.tea.parsetree.AndExpression;
 import org.teatrove.tea.parsetree.ArithmeticExpression;
 import org.teatrove.tea.parsetree.ArrayLookup;
-import org.teatrove.tea.parsetree.AssignmentStatement;
+import org.teatrove.tea.parsetree.AssignmentExpression;
 import org.teatrove.tea.parsetree.BinaryExpression;
 import org.teatrove.tea.parsetree.Block;
 import org.teatrove.tea.parsetree.BooleanLiteral;
@@ -409,7 +409,7 @@ public class TypeChecker {
                 // Shouldn't happen.
                 error("variable.undefined", ref.getName(), ref);
             }
-        }
+        } 
 
         public void check(Node node) {
             node.accept(this);
@@ -714,12 +714,14 @@ public class TypeChecker {
         }
 
 
-        public Object visit(AssignmentStatement node) {
-            VariableRef lvalue = node.getLValue();
-            String lname = lvalue.getName();
-            if(mLoopVariables.contains(lname)) {
-                error("foreach.loopvar.nomodify", lname, node.getSourceInfo());
-                return null;
+        public Object visit(AssignmentExpression node) {
+            Expression lvalue = node.getLValue();
+            if (lvalue instanceof VariableRef) {
+                String lname = ((VariableRef) lvalue).getName();
+                if(mLoopVariables.contains(lname)) {
+                    error("foreach.loopvar.nomodify", lname, node.getSourceInfo());
+                    return null;
+                }
             }
 
             Expression rvalue = node.getRValue();
@@ -728,26 +730,37 @@ public class TypeChecker {
             Type type = rvalue.getType();
 
             // Start mod for declarative typing
-            if (type != null) {
+            if (type != null && lvalue instanceof VariableRef) {
+                VariableRef lref = (VariableRef) lvalue;
+                String lname = lref.getName();
+                
                 Class<?> rclass = type.getObjectClass();
                 Variable dvar = mScope.getDeclaredVariable(lname);
-                if (dvar == null)
-                    dvar = lvalue.getVariable();
+                if (dvar == null) {
+                    dvar = lref.getVariable();
+                }
                 if (dvar != null && dvar.isStaticallyTyped()) {
                     check(dvar.getTypeName());
-                    if (dvar.getType() == null) // Added this line
+                    if (dvar.getType() == null) {
                         dvar.setType(dvar.getTypeName().getType());
-                    if (dvar.getType() == null)
+                    }
+                    if (dvar.getType() == null) {
                         return null;   // Bad type
+                    }
                     Class<?> lclass = dvar.getType().getObjectClass();
-                    if (lvalue.getVariable() == null)
-                        lvalue.setVariable(dvar);
-                    if (!type.isPrimitive())
+                    if (lref.getVariable() == null) {
+                        lref.setVariable(dvar);
+                    }
+                    if (!type.isPrimitive()) {
                         type = dvar.getType();
-                    if (rclass != null && lclass != null && rclass.isAssignableFrom(lclass) && rclass != lclass) {
+                    }
+                    if (rclass != null && lclass != null && 
+                        rclass.isAssignableFrom(lclass) && rclass != lclass) {
+                        
                         type = dvar.getType();
                         if (rvalue instanceof NullLiteral && type.isPrimitive()) {
-                            error("variable.primitive.uninitialized", type.getNaturalClass().getName(), node);
+                            error("variable.primitive.uninitialized", 
+                                  type.getNaturalClass().getName(), node);
                             return null;
                         }
                         rvalue.convertTo(type.toNullable());
@@ -755,11 +768,14 @@ public class TypeChecker {
                     else if (rclass == lclass) {
                         // nothing to convert (already same type)
                     }
-                    else if (lclass != null && rclass != null && lclass.isAssignableFrom(rclass)) {
+                    else if (lclass != null && rclass != null && 
+                        lclass.isAssignableFrom(rclass)) {
+                        
                         rvalue.convertTo(dvar.getType().toNullable());
                     }
                     else if (rclass != lclass) {
-                        error("assignmentstatement.cast.invalid", rclass.getName(), lclass.getName(), node);
+                        error("assignmentstatement.cast.invalid", 
+                              rclass.getName(), lclass.getName(), node);
                         return null;
                     }
                 }
@@ -777,9 +793,49 @@ public class TypeChecker {
                     rvalue.convertTo(type.toNullable());
                     type = rvalue.getType();
                 }
-                defineVariable(lvalue, type);
+                
+                if (lvalue instanceof VariableRef) {
+                    defineVariable((VariableRef) lvalue, type);
+                }
+                else if (lvalue instanceof ArrayLookup) {
+                    ArrayLookup lookup = (ArrayLookup) lvalue;
+                    // visit(lookup);
+                }
+                else if (lvalue instanceof Lookup) {
+                    Lookup lookup = (Lookup) lvalue;
+                    processLookup(lookup, false);
+                    
+                    Type ltype = lookup.getType();
+                    if (ltype.convertableFrom(type) == -1) {
+                        error("assignment.type.mismatch", 
+                              ltype.getFullName(), type.getFullName(), node);
+                    }
+                }
+                else {
+                    error("assignment.lvalue.unsupported", node);
+                    return null;
+                }
+                
+                // TODO: if lvalue is array lookup
+                    // check (array lookup expr && array factor)
+                    // if array, array[x] = r
+                    // if list
+                        // if list unmodifiable, error not modifiable
+                        // else list.set(x, r)
+                    // if map
+                        // if map unmodifiable, error not modifiable
+                        // else map.put(x, r)
+                    // error unknown type
+                // TODO: if lvalue is lookup
+                    // check (lookup left && name)
+                    // lookup property
+                    // validate types convertable and convert
+                    // if no write method, error no write method
+                    // else, setWriteMethod
+                // TODO: else error unknown assignable expression
             }
 
+            node.convertTo(type);
             return null;
         }
 
@@ -1125,8 +1181,11 @@ public class TypeChecker {
                     }
                 }
 
-                newStatements.add
-                    (new AssignmentStatement(info, lvalue, rvalue));
+                newStatements.add(
+                    new ExpressionStatement(
+                        new AssignmentExpression(info, lvalue, rvalue)
+                    )
+                );
             }
 
             if (newStatements.size() == 0) {
@@ -1181,8 +1240,11 @@ public class TypeChecker {
                 rvalue.setVariable(oldVar);
                 rvalue.convertTo(newVar.getType(), false);
 
-                newStatements.add
-                    (new AssignmentStatement(info, lvalue, rvalue));
+                newStatements.add(
+                    new ExpressionStatement(
+                        new AssignmentExpression(info, lvalue, rvalue)
+                    )
+                );
             }
 
             if (newStatements.size() == 0) {
@@ -1209,8 +1271,15 @@ public class TypeChecker {
             if (expr instanceof CallExpression) {
                 ((CallExpression)expr).setVoidPermitted(true);
             }
+            
             check(expr);
 
+            // do not allow assignments to return value when used standalone
+            // as we do not want the result output to the screen
+            if (expr instanceof AssignmentExpression) {
+                expr.setType(Type.VOID_TYPE);
+            }
+            
             Type type = expr.getType();
             Compiler c = mUnit.getCompiler();
 
@@ -2033,6 +2102,11 @@ public class TypeChecker {
         }
 
         public Object visit(Lookup node) {
+            return processLookup(node, true);
+        }
+        
+        public Object processLookup(Lookup node, boolean reading) {
+            
             // check for type expression to resolve static fields against
             Expression expr = checkForTypeExpression(node.getExpression());
             if (expr == null) {
@@ -2058,8 +2132,13 @@ public class TypeChecker {
 
                     // check if constant class
                     if ("class".equals(property)) {
-                        node.setReadProperty(null);
-                        node.setType(new Type(expr.getType().getNaturalClass().getClass()));
+                        if (reading) {
+                            node.setReadWriteProperty(null);
+                            node.setType(new Type(expr.getType().getNaturalClass().getClass()));
+                        }
+                        else {
+                            error("lookup.type.expression.readonly", node);
+                        }
                     }
 
                     // lookup field and error out if invalid
@@ -2077,8 +2156,10 @@ public class TypeChecker {
                             return null;
                         }
     
-                        // save static field and type
-                        node.setReadProperty(field);
+                        // set read or write property accordingly
+                        node.setReadWriteProperty(field);
+                        
+                        // save resulting type
                         node.setType(new Type(field.getType(),
                                               field.getGenericType()));
                     }
@@ -2087,10 +2168,14 @@ public class TypeChecker {
                     return null;
                 }
                 else if ("length".equals(lookupName)) {
-                    if (clazz == String.class) {
+                    if (!reading) {
+                        error("lookup.length.readonly", node);
+                        return null;
+                    }
+                    else if (clazz == String.class) {
                         node.setType(Type.INT_TYPE);
                         try {
-                            node.setReadMethod(clazz.getMethod("length"));
+                            node.setReadWriteMethod(clazz.getMethod("length"));
                             return null;
                         }
                         catch (NoSuchMethodException e) {
@@ -2101,7 +2186,7 @@ public class TypeChecker {
                              Map.class.isAssignableFrom(clazz)) {
                         node.setType(Type.INT_TYPE);
                         try {
-                            node.setReadMethod(clazz.getMethod("size"));
+                            node.setReadWriteMethod(clazz.getMethod("size"));
                             return null;
                         }
                         catch (NoSuchMethodException e) {
@@ -2128,7 +2213,7 @@ public class TypeChecker {
 
                 PropertyDescriptor prop = properties.get(lookupName);
                 // TODO: consider checking if public field named lookupName
-                    if (prop == null && !type.isDynamic()) {
+                if (prop == null && !type.isDynamic()) {
                     error("lookup.undefined", lookupName, type.getSimpleName(),
                           node.getLookupName());
                     return null;
@@ -2140,16 +2225,20 @@ public class TypeChecker {
                                             .getGenericPropertyType());
                 }
 
-                Method rmethod = null;
+                Method method = null;
                 if (prop != null) {
-                    rmethod = prop.getReadMethod();
-                    if (rmethod == null) {
+                    if (reading) { method = prop.getReadMethod(); }
+                    else { method = prop.getWriteMethod(); }
+                    
+                    if (method == null) {
                         error("lookup.unreadable", lookupName,
                               node.getLookupName());
                         return null;
                     }
 
-                    Class<?> retClass = rmethod.getReturnType();
+                    Class<?> retClass = null;
+                    if (reading) { retClass = method.getReturnType(); }
+                    else { retClass = method.getParameterTypes()[0]; }
                     if (retClass == null) {
                         error("lookup.array.only", lookupName,
                               node.getLookupName());
@@ -2159,9 +2248,9 @@ public class TypeChecker {
                     if (nodeType == null) {
                         TypedElement te = null;
                         java.lang.reflect.Type ge = null;
-                        if (rmethod != null) {
-                            ge = rmethod.getGenericReturnType();
-                            te = rmethod.getAnnotation(TypedElement.class);
+                        if (method != null) {
+                            ge = method.getGenericReturnType();
+                            te = method.getAnnotation(TypedElement.class);
                         }
 
                         nodeType = (te != null ? new Type(retClass, ge, te)
@@ -2204,11 +2293,11 @@ public class TypeChecker {
                     node.convertTo(Type.STRING_TYPE);
                 }
 
-                if (rmethod != null && ClassUtils.isDeprecated(rmethod)) {
+                if (method != null && ClassUtils.isDeprecated(method)) {
                     warn("functioncallexpression.deprecated", lookupName, node);
                 }
                 
-                node.setReadMethod(rmethod);
+                node.setReadWriteMethod(method);
             }
 
             return null;
@@ -3126,7 +3215,7 @@ public class TypeChecker {
             return new ReturnStatement(expr);
         }
 
-        public Object visit(AssignmentStatement node) {
+        public Object visit(AssignmentExpression node) {
             // Skip traversing this node altogether.
             return node;
         }
@@ -3168,20 +3257,24 @@ public class TypeChecker {
      * ExceptionGuardStatement.
      */
     private static class ExceptionGuardian extends TreeMutator {
-        public Object visit(AssignmentStatement node) {
+        /* TODO: how to re-enable this with expressions
+        public Object visit(AssignmentExpression node) {
             if (!node.getRValue().isExceptionPossible()) {
                 return node;
             }
 
             SourceInfo info = node.getSourceInfo();
-            VariableRef lvalue = node.getLValue();
+            Expression lvalue = node.getLValue();
 
             // Replacement assigns null to lvalue.
             Statement replacement =
-                new AssignmentStatement(info, lvalue, new NullLiteral(info));
+                new ExpressionStatement(
+                    new AssignmentExpression(info, lvalue, new NullLiteral(info))
+                );
 
             return new ExceptionGuardStatement(node, replacement);
         }
+        */
 
         public Object visit(ForeachStatement node) {
             Block body = node.getBody();
@@ -3258,8 +3351,9 @@ public class TypeChecker {
                                                      v.getName());
                 lvalue.setVariable(v);
 
-                replacements[i] = new AssignmentStatement
-                    (info, lvalue, new NullLiteral(info));
+                replacements[i] = new ExpressionStatement(
+                    new AssignmentExpression(info, lvalue, new NullLiteral(info))
+                );
             }
 
             Statement replacement = new StatementList(info, replacements);

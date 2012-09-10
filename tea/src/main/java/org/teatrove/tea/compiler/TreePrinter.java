@@ -25,7 +25,7 @@ import java.io.StringWriter;
 import org.teatrove.tea.parsetree.AndExpression;
 import org.teatrove.tea.parsetree.ArithmeticExpression;
 import org.teatrove.tea.parsetree.ArrayLookup;
-import org.teatrove.tea.parsetree.AssignmentStatement;
+import org.teatrove.tea.parsetree.AssignmentExpression;
 import org.teatrove.tea.parsetree.BinaryExpression;
 import org.teatrove.tea.parsetree.Block;
 import org.teatrove.tea.parsetree.BooleanLiteral;
@@ -310,7 +310,7 @@ public class TreePrinter extends CodeGenerator {
             return null;
         }
         
-        public Object visit(AssignmentStatement node) {
+        public Object visit(AssignmentExpression node) {
             node.getLValue().accept(this);
             print(" = ");
             node.getRValue().accept(this);

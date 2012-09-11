@@ -599,16 +599,6 @@ public class Parser {
                     new AssignmentExpression(info, lvalue, rvalue)
                 );
                 break;
-            /*
-            case Token.IDENT:
-                if (peek().getID() == Token.ASSIGN) {
-                    st = parseAssignmentStatement(token);
-                }
-                else {
-                    st = new ExpressionStatement(parseExpression(token));
-                }
-                break;
-            */
             case Token.ELLIPSIS:
                 st = new SubstitutionStatement(token.getSourceInfo());
                 break;

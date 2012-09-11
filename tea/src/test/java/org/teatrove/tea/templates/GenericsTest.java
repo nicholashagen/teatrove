@@ -92,5 +92,5 @@ public class GenericsTest extends AbstractTemplateTest {
             "} " +
         "}" +
         "cnt";
-                
+
 }

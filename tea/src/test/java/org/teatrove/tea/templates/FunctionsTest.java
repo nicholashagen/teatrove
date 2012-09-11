@@ -123,8 +123,8 @@ public class FunctionsTest extends AbstractTemplateTest {
     	"Math.PI";
     
     protected static final String TEST_STATIC_SOURCE_2 =
-    	"radius = 5; area = java.lang.Math.PI *  java.lang.Math.pow(radius, 2); area";
-    
+    	"radius = 5; area = java.lang.Math.PI * java.lang.Math.pow(radius, 2); area";
+   
     protected static final String TEST_STATIC_SOURCE_3 =
     	"list = java.util.Collections.singletonList('test'); list[0];";
     

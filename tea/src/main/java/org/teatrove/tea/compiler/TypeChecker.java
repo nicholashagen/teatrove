@@ -771,12 +771,18 @@ public class TypeChecker {
                     else if (lclass != null && rclass != null && 
                         lclass.isAssignableFrom(rclass)) {
                         
-                        rvalue.convertTo(dvar.getType().toNullable());
+                        type = dvar.getType().toNullable();
+                        rvalue.convertTo(type);
                     }
                     else if (rclass != lclass) {
-                        error("assignmentstatement.cast.invalid", 
-                              rclass.getName(), lclass.getName(), node);
-                        return null;
+                        if (dvar.getType().convertableFrom(type) == -1) {
+                            error("assignmentstatement.cast.invalid", 
+                                  rclass.getName(), lclass.getName(), node);
+                            return null;
+                        }
+                        
+                        type = dvar.getType();
+                        rvalue.convertTo(type);
                     }
                 }
             }
@@ -1181,11 +1187,12 @@ public class TypeChecker {
                     }
                 }
 
-                newStatements.add(
-                    new ExpressionStatement(
-                        new AssignmentExpression(info, lvalue, rvalue)
-                    )
+                Statement st = new ExpressionStatement(
+                    new AssignmentExpression(info, lvalue, rvalue)
                 );
+                
+                // TODO: check(st);
+                newStatements.add(st);
             }
 
             if (newStatements.size() == 0) {
@@ -1240,11 +1247,12 @@ public class TypeChecker {
                 rvalue.setVariable(oldVar);
                 rvalue.convertTo(newVar.getType(), false);
 
-                newStatements.add(
-                    new ExpressionStatement(
-                        new AssignmentExpression(info, lvalue, rvalue)
-                    )
+                Statement st = new ExpressionStatement(
+                    new AssignmentExpression(info, lvalue, rvalue)
                 );
+                
+                // TODO: check(st);
+                newStatements.add(st);
             }
 
             if (newStatements.size() == 0) {

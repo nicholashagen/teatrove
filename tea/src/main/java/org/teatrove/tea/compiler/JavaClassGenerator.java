@@ -264,8 +264,8 @@ public class JavaClassGenerator extends CodeGenerator {
     private Map<String, Variable> mFields = new HashMap<String, Variable>();
 
     // A list of Statements that need to be put into a static initializer.
-    private List<Object> mInitializerStatements =
-        new ArrayList<Object>();
+    private List<Statement> mInitializerStatements =
+        new ArrayList<Statement>();
 
     private MessageFormatter mFormatter;
 
@@ -902,7 +902,7 @@ public class JavaClassGenerator extends CodeGenerator {
             mOuterClass = mClassFile;
         }
         mFields = new HashMap<String, Variable>();
-        mInitializerStatements = new ArrayList<Object>();
+        mInitializerStatements = new ArrayList<Statement>();
         
         // return class
         return mClassFile;
@@ -924,8 +924,8 @@ public class JavaClassGenerator extends CodeGenerator {
         private Map<String, Variable> mFields = 
             new HashMap<String, Variable>();
 
-        private List<Object> mInitializerStatements =
-            new ArrayList<Object>();
+        private List<Statement> mInitializerStatements =
+            new ArrayList<Statement>();
     }
     
     private class Visitor implements NodeVisitor {
@@ -1560,7 +1560,8 @@ public class JavaClassGenerator extends CodeGenerator {
                 generateContext();
             }
 
-            generate(node.getExpression());
+            Expression expr = node.getExpression();
+            generate(expr);
 
             if (receiver != null) {
                 mBuilder.invoke(receiver);
@@ -1575,7 +1576,24 @@ public class JavaClassGenerator extends CodeGenerator {
                     }
                 }
             }
-
+            else {
+                Type type = (expr == null ? null : expr.getType());
+                if ((type == null || type.isVoid()) && 
+                    expr instanceof AssignmentExpression) {
+                    
+                    type = ((AssignmentExpression) expr).getRValue().getType();
+                }
+                
+                if (type != null && !type.isVoid()) {
+                    if (makeDesc(type).isDoubleWord()) {
+                        mBuilder.pop2();
+                    }
+                    else { 
+                        mBuilder.pop();
+                    }
+                }
+            }
+            
             return null;
         }
 
@@ -1741,7 +1759,7 @@ public class JavaClassGenerator extends CodeGenerator {
                     new AssignmentExpression(info, ref, clonedNode);
 
                 // Move this statement into the static initializer
-                mInitializerStatements.add(assn);
+                mInitializerStatements.add(new ExpressionStatement(assn));
 
                 // Substitute a field access for a NewArrayExpression
                 TypeDesc td = makeDesc(className);
@@ -1821,7 +1839,7 @@ public class JavaClassGenerator extends CodeGenerator {
                     new AssignmentExpression(info, ref, clonedNode);
 
                 // Move this statement into the static initializer
-                mInitializerStatements.add(assn);
+                mInitializerStatements.add(new ExpressionStatement(assn));
 
                 // Substitute a field access for a NewArrayExpression
                 TypeDesc td = makeDesc(initialClass);

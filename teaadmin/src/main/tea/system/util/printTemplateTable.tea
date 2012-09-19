@@ -1,6 +1,6 @@
 <% template printTemplateTable (String templatePath, SortedMap<String, SortedMap> templateMap)
 
-    pathPrefix = call system.util.getPathPrefix()
+    pathPrefix = '' // call system.util.getPathPrefix()
     
 %>
 
@@ -15,7 +15,7 @@
 
 <%
         idx = 0
-        foreach (entry in entrySet(templateMap)) {
+        foreach (entry in templateMap.entrySet()) {
             if (entry.value == null) {
                 idx = idx + 1
                 name = entry.key
@@ -36,7 +36,7 @@
 %>
     </tbody>
 <%
-        foreach (entry in entrySet(templateMap)) {
+        foreach (entry in templateMap.entrySet()) {
             value = entry.value
             if (value isa SortedMap) {
                 call printTemplateTable(templatePath & '/' & entry.key, value)

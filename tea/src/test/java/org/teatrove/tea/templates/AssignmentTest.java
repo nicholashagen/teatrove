@@ -48,7 +48,10 @@ public class AssignmentTest extends AbstractTemplateTest {
         //TODO{ "array = getArray(2, 3); array[0] = 3; array[1] = 5; array[0] + array[1];", "8" }
         //TODO{ "user = getNullUser(); user?.firstName = 'blah'; user?.firstName", "null" },
         { "c = 5.2; c", "5.2" },
-        { "a = b = 5.3; a + b", "10.6" }
+        { "a = b = 5.3; a + b", "10.6" },
+        { "a = getInt(5); a = a + 7; a", "12" },
+        { "a = getInt(6); a = getInt(7); a", "7" },
+        { "u = getList('test'); foreach (i in u) { if (i isa String) { i } }", "test" }
     };
     
     public static class AssignmentContext {

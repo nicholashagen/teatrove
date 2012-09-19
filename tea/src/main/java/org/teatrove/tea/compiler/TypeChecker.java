@@ -841,7 +841,19 @@ public class TypeChecker {
                 // TODO: else error unknown assignable expression
             }
 
-            node.convertTo(type);
+            if (type == null || type.isVoid()) {
+                error("assignmentstatement.type.invalid", node);
+                return null;
+            }
+            
+            // assign type...note that it is possible the node was
+            // previously voided...in this case, we need to re-set the
+            // type...otherwise, we convert accordingly
+            if (node.getType() != null && node.getType().isVoid()) {
+                node.setType(type);
+            }
+            else { node.convertTo(type); }
+
             return null;
         }
 

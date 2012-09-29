@@ -19,15 +19,12 @@ package org.teatrove.trove.classfile;
 import java.util.AbstractCollection;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Set;
 import java.util.SortedSet;
-import java.util.TreeSet;
 
 /**
  * The InstructionList class is used by the CodeBuilder to perform lower-level
@@ -44,8 +41,11 @@ class InstructionList implements CodeBuffer {
 
     boolean mResolved = false;
 
-    private List mExceptionHandlers = new ArrayList(4);
-    private List mLocalVariables = new ArrayList();
+    private List<ExceptionHandler> mExceptionHandlers = 
+        new ArrayList<ExceptionHandler>(4);
+    
+    private List<LocalVariable> mLocalVariables = 
+        new ArrayList<LocalVariable>();
 
     private int mMaxStack;
     private int mMaxLocals;
@@ -61,17 +61,17 @@ class InstructionList implements CodeBuffer {
      * Returns an immutable collection of all the instructions in this
      * InstructionList.
      */
-    public Collection getInstructions() {
-        return new AbstractCollection() {
-            public Iterator iterator() {
-                return new Iterator() {
+    public Collection<Instruction> getInstructions() {
+        return new AbstractCollection<Instruction>() {
+            public Iterator<Instruction> iterator() {
+                return new Iterator<Instruction>() {
                     private Instruction mNext = mFirst;
 
                     public boolean hasNext() {
                         return mNext != null;
                     }
 
-                    public Object next() {
+                    public Instruction next() {
                         if (mNext == null) {
                             throw new NoSuchElementException();
                         }
@@ -117,7 +117,7 @@ class InstructionList implements CodeBuffer {
 
         ExceptionHandler[] handlers =
             new ExceptionHandler[mExceptionHandlers.size()];
-        return (ExceptionHandler[])mExceptionHandlers.toArray(handlers);
+        return mExceptionHandlers.toArray(handlers);
     }
 
     public void addExceptionHandler(ExceptionHandler handler) {
@@ -284,13 +284,14 @@ class InstructionList implements CodeBuffer {
         // Perform stack flow analysis to determine the max stack size.
 
         // Start the flow analysis at the first instruction.
-        Map subAdjustMap = new HashMap(11);
+        Map<Instruction, Integer> subAdjustMap = 
+            new HashMap<Instruction, Integer>(11);
         stackResolve(0, mFirst, subAdjustMap);
 
         // Continue flow analysis into exception handler entry points.
-        Iterator it = mExceptionHandlers.iterator();
+        Iterator<ExceptionHandler> it = mExceptionHandlers.iterator();
         while (it.hasNext()) {
-            ExceptionHandler handler = (ExceptionHandler)it.next();
+            ExceptionHandler handler = it.next();
             Instruction enter = (Instruction)handler.getCatchLocation();
             stackResolve(1, enter, subAdjustMap);
         }
@@ -375,7 +376,7 @@ class InstructionList implements CodeBuffer {
         }
     }
 
-
+    /*
     private boolean variableResolve(LocalVariableImpl var,
                                     Instruction instr,
                                     SortedSet<Location> activeLocations,
@@ -464,10 +465,11 @@ class InstructionList implements CodeBuffer {
 
         return true;
     }
-
+    */
+    
     private int stackResolve(int stackDepth,
                              Instruction instr,
-                             Map subAdjustMap) {
+                             Map<Instruction, Integer> subAdjustMap) {
         while (instr != null) {
             // Set the stack depth, marking this instruction as being visited.
             // If already visited, break out of this flow.
@@ -480,7 +482,7 @@ class InstructionList implements CodeBuffer {
                     throw new RuntimeException
                         ("Stack depth different at previously visited " +
                          "instruction: " + instr.mStackDepth +
-                         " != " + stackDepth);
+                         " != " + stackDepth + ": " + instr.mLocation);
                 }
 
                 break;
@@ -526,13 +528,13 @@ class InstructionList implements CodeBuffer {
                     }
                     else {
                         Integer subAdjust =
-                            (Integer)subAdjustMap.get(targetInstr);
+                            subAdjustMap.get(targetInstr);
 
                         if (subAdjust == null) {
                             int newDepth =
                                 stackResolve(stackDepth, targetInstr,
                                              subAdjustMap);
-                            subAdjust = new Integer(newDepth - stackDepth);
+                            subAdjust = Integer.valueOf(newDepth - stackDepth);
                             subAdjustMap.put(targetInstr, subAdjust);
                         }
 
@@ -552,9 +554,9 @@ class InstructionList implements CodeBuffer {
         private TypeDesc mType;
 
         private int mNumber;
-        private boolean mFixed;
+        // private boolean mFixed;
 
-        private List mStoreInstructions;
+        private List<Instruction> mStoreInstructions;
         private SortedSet<LocationRange> mLocationRangeSet;
 
         public LocalVariableImpl(String name, TypeDesc type,
@@ -562,10 +564,10 @@ class InstructionList implements CodeBuffer {
             mName = name;
             mType = type;
             mNumber = number;
-            if (number >= 0) {
-                mFixed = true;
-            }
-            mStoreInstructions = new ArrayList();
+            //if (number >= 0) {
+            //    mFixed = true;
+            //}
+            mStoreInstructions = new ArrayList<Instruction>();
         }
 
         /**
@@ -599,9 +601,11 @@ class InstructionList implements CodeBuffer {
             return mLocationRangeSet;
         }
 
+        /*
         public void setLocations(Set<Location> locations) {
 
-            List<Location> sortedLocations = Collections.checkedList(new ArrayList<Location>(), Location.class);
+            List<Location> sortedLocations = 
+                Collections.checkedList(new ArrayList<Location>(), Location.class);
             sortedLocations.addAll(locations);
             Collections.sort(sortedLocations);
 
@@ -653,18 +657,23 @@ class InstructionList implements CodeBuffer {
                 Collections.unmodifiableSortedSet(mLocationRangeSet);
 
         }
+        */
 
+        /*
         public boolean isFixedNumber() {
             return mFixed;
         }
+        */
 
         public void addStoreInstruction(Instruction instr) {
             mStoreInstructions.add(instr);
         }
 
-        public Iterator iterateStoreInstructions() {
+        /*
+        public Iterator<Instruction> iterateStoreInstructions() {
             return mStoreInstructions.iterator();
         }
+        */
 
         public String toString() {
             if (getName() != null) {
@@ -1117,7 +1126,7 @@ class InstructionList implements CodeBuffer {
                 break;
             case Opcode.JSR:
                 mIsSub = true;
-                // Flow through to next case.
+                //$FALL-THROUGH$
             case Opcode.GOTO:
             case Opcode.IF_ACMPEQ:
             case Opcode.IF_ACMPNE:
@@ -1219,6 +1228,12 @@ class InstructionList implements CodeBuffer {
 
         public boolean isResolved() {
             return mTarget.getLocation() >= 0;
+        }
+        
+        @Override
+        public String toString() {
+            return super.toString() + 
+                " [location: " + mTarget.getLocation() + "]";
         }
     }
 
@@ -2002,7 +2017,7 @@ class InstructionList implements CodeBuffer {
         System.err.println("Error generating instructions: " + errorMsg);
         System.err.println("-- Instructions --");
 
-        Iterator it = getInstructions().iterator();
+        Iterator<Instruction> it = getInstructions().iterator();
         while (it.hasNext()) {
             System.err.println(it.next().toString());
         }        

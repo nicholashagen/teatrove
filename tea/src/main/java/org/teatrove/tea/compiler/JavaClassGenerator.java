@@ -1379,7 +1379,11 @@ public class JavaClassGenerator extends CodeGenerator {
                             else {
                                 mBuilder.integerIncrement(local, -i);
                             }
-                            mBuilder.loadLocal(local);
+                            
+                            if (isExpr) {
+                                mBuilder.loadLocal(local);
+                            }
+                            
                             return null;
                         }
                     }

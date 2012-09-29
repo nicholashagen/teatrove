@@ -40,6 +40,7 @@ public class AssignmentTest extends AbstractTemplateTest {
     }
 
     protected static final String[][] TEST_SOURCES = {
+        /*
         { "a = 5; a", "5" },
         { "user = getUser(); user.firstName = 'test'; user.firstName", "test" },
         { "user = test = getUser(); user.firstName = 'test'; test.firstName", "test" },
@@ -65,7 +66,11 @@ public class AssignmentTest extends AbstractTemplateTest {
         { "a = getInt(5); a = a + 7; a", "12" },
         { "a = getInt(6); a = getInt(7); a", "7" },
         { "u = getList('test'); foreach (i in u) { if (i isa String) { i } }", "test" },
-        { "ref = checkTest(getString('5') ?: '9');", "" }
+        { "ref = checkTest(getString('5') ?: '9');", "" },
+        { "list = getList('test'); foreach (i in list) { i }", "test" },
+        { "a = getInt(5); a = a + 5; a", "10" },
+        */
+        { "list = getList('test'); total = 0; foreach (i in list) { total = total + 1 }; total", "1" }
     };
 
     protected static final String[] TEST_ERRORS = {

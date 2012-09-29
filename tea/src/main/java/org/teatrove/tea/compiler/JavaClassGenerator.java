@@ -1330,18 +1330,17 @@ public class JavaClassGenerator extends CodeGenerator {
         }
 
         public Object visit(AssignmentExpression node) {
+            return generateAssignment(node, true);
+        }
+        
+        protected Object generateAssignment(AssignmentExpression node,
+                                            final boolean isExpr) {
             Expression lvalue = node.getLValue();
             Type ltype = lvalue.getType();
             
             final Expression rvalue = node.getRValue();
             Type rtype = rvalue.getType();
 
-            generate(rvalue);
-            final LocalVariable rlocal = mBuilder.createLocalVariable(
-                null, makeDesc(rvalue.getType())
-            );
-            mBuilder.storeLocal(rlocal);
-            
             if (lvalue instanceof VariableRef) {
                 Variable v = ((VariableRef) lvalue).getVariable();
                 LocalVariable local = getLocalVariable(v);                
@@ -1388,23 +1387,33 @@ public class JavaClassGenerator extends CodeGenerator {
 
                 storeToVariable(v, new Runnable() {
                     public void run() {
-                        mBuilder.loadLocal(rlocal);
+                        generateAssignmentExpression(rvalue, isExpr);
                     }
                 });
             }
             else if (lvalue instanceof ArrayLookup) {
-                // TODO: list.set(x, rvalue)
-                // TODO: map.put(x, rvalue)
-                // TODO: array[x] = rvalue
+                generateAssignmentExpression(rvalue, isExpr);
+                processArrayLookup((ArrayLookup) lvalue, false, null);
             }
             else if (lvalue instanceof Lookup) {
-                processLookup((Lookup) lvalue, false, rlocal);
+                generateAssignmentExpression(rvalue, isExpr);
+                processLookup((Lookup) lvalue, false, null);
             }
 
-            mBuilder.loadLocal(rlocal);
             return null;
         }
-
+        
+        protected void generateAssignmentExpression(Expression rvalue,
+                                                    boolean isExpr) {
+            generate(rvalue);
+            if (isExpr) {
+                if (makeDesc(rvalue.getType()).isDoubleWord()) {
+                    mBuilder.dup2();
+                }
+                else { mBuilder.dup(); }
+            }
+        }
+        
         public Object visit(ForeachStatement node) {
             // Push a label for this foreach loop. Break statement will
             // us this label to break out of loop.
@@ -1561,7 +1570,10 @@ public class JavaClassGenerator extends CodeGenerator {
             }
 
             Expression expr = node.getExpression();
-            generate(expr);
+            if (expr instanceof AssignmentExpression) {
+                generateAssignment((AssignmentExpression) expr, false);
+            }
+            else { generate(expr); }
 
             if (receiver != null) {
                 mBuilder.invoke(receiver);
@@ -1577,20 +1589,14 @@ public class JavaClassGenerator extends CodeGenerator {
                 }
             }
             else {
-                Type type = (expr == null ? null : expr.getType());
-                if ((type == null || type.isVoid()) && 
-                    expr instanceof AssignmentExpression) {
-                    
-                    type = ((AssignmentExpression) expr).getRValue().getType();
-                }
+                Type type = (
+                    expr == null || expr instanceof AssignmentExpression 
+                        ? null : expr.getType()
+                );
                 
                 if (type != null && !type.isVoid()) {
-                    if (makeDesc(type).isDoubleWord()) {
-                        mBuilder.pop2();
-                    }
-                    else { 
-                        mBuilder.pop();
-                    }
+                    if (makeDesc(type).isDoubleWord()) { mBuilder.pop2(); }
+                    else { mBuilder.pop(); }
                 }
             }
             
@@ -1998,23 +2004,32 @@ public class JavaClassGenerator extends CodeGenerator {
             // generate static field lookup if provided
             Field field = node.getReadWriteProperty();
             if (field != null) {
+                TypeDesc desc = makeDesc(node.getType());
+                
                 if (reading) {
                 	mBuilder.loadStaticField(field.getDeclaringClass().getName(), 
-                			                 field.getName(), 
-                			                 makeDesc(node.getType()));
+                			                 field.getName(), desc);
                 }
-                else {
+                else if (param != null) {
                     mBuilder.loadLocal(param);
                     mBuilder.storeStaticField(field.getDeclaringClass().getName(), 
-                                              field.getName(), 
-                                              makeDesc(node.getType()));
+                                              field.getName(), desc);
+                }
+                else {
+                    if (desc.isDoubleWord()) { 
+                        swapSingleDouble(mBuilder);
+                    }
+                    else { mBuilder.swap(); }
+                    
+                    mBuilder.storeStaticField(field.getDeclaringClass().getName(), 
+                                              field.getName(), desc);
                 }
             	
             	return null;
             }
             
             // generate null-safe check if necessary
-            generateNullSafe(node, expr, new NullSafeCallback() {
+            generateNullSafe(node, expr, reading, new NullSafeCallback() {
                 public Type execute() {
                     Type type = null;
                     Method readWriteMethod = node.getReadWriteMethod();
@@ -2026,6 +2041,7 @@ public class JavaClassGenerator extends CodeGenerator {
                         String className = expr.getType().getClassName();
                         DynamicType dynamic = (DynamicType) expr.getType();
                         Type retType = dynamic.getParameterType(lookupName);
+                        TypeDesc retTypeDesc = makeDesc(retType);
 
                         String methodName = 
                             Character.toUpperCase(lookupName.charAt(0)) + 
@@ -2036,12 +2052,21 @@ public class JavaClassGenerator extends CodeGenerator {
 
                         // put the param on the stack if setter method
                         if (!reading) {
-                            mBuilder.loadLocal(param);
+                            if (param != null) { 
+                                mBuilder.loadLocal(param); 
+                            }
+                            else if (retTypeDesc.isDoubleWord()) { 
+                                swapSingleDouble(mBuilder);
+                            }
+                            else {
+                                mBuilder.swap(); 
+                            }
                         }
                         
                         type = retType;
+                        // TODO: add test case for this for the setter form
                         mBuilder.invokeVirtual(className, methodName,
-                                               makeDesc(retType), new TypeDesc[0]);
+                                               retTypeDesc, new TypeDesc[0]);
                     }
                     else if (expr.getType().getObjectClass().isArray() &&
                              lookupName.equals("length")) {
@@ -2077,7 +2102,15 @@ public class JavaClassGenerator extends CodeGenerator {
 
                         // put the param on the stack if setter method
                         if (!reading) {
-                            mBuilder.loadLocal(param);
+                            if (param != null) {
+                                mBuilder.loadLocal(param); 
+                            }
+                            else if (makeDesc(type).isDoubleWord()) {
+                                swapSingleDouble(mBuilder);
+                            }
+                            else { 
+                                mBuilder.swap();
+                            }
                         }
                         
                         mBuilder.invoke(readWriteMethod);
@@ -2090,16 +2123,117 @@ public class JavaClassGenerator extends CodeGenerator {
             // nothing to update
             return null;
         }
+        
+        /**
+         * This code is used to perform a similar operation to a swap2 except
+         * that it swaps a single word with a double word.  For example:
+         * 
+         * <pre>
+         * Before         After
+         * ----------     ----------
+         * objref         double
+         * double           2-word
+         *   2-word       objref
+         * ...            ...
+         * </pre>
+         * 
+         * In order for this to work, it has to first dup the top single word
+         * after the double via dup_x2.
+         * 
+         * <pre>
+         * objref
+         * double
+         *   2-word
+         * objref
+         * ...
+         * </pre>
+         * 
+         * Then, it can simply pop the top objref, leaving the expected output.
+         * 
+         * <pre>
+         * double
+         *   2-worrd
+         * objref
+         * ...
+         * </pre>
+         */
+        protected void swapSingleDouble(CodeBuilder builder) {
+            builder.dupX2();
+            builder.pop();
+        }
+        
+        /**
+         * This code is used to perform a similar operation to a swap2 except
+         * that it swaps a double word with a single word.  For example:
+         * 
+         * <pre>
+         * Before         After
+         * ----------     ----------
+         * double         objref
+         *   2-word       double
+         * objref           2-word
+         * ...            ...
+         * </pre>
+         * 
+         * In order for this to work, it has to first dup the top double word
+         * after the single word via dup2_x1.
+         * 
+         * <pre>
+         * double
+         *   2-word
+         * objref
+         * double
+         *   2-word
+         * ...
+         * </pre>
+         * 
+         * Then, it can simply pop the top double, leaving the expected output.
+         * 
+         * <pre>
+         * objref
+         * double
+         *   2-worrd
+         * ...
+         * </pre>
+         */
+        protected void swapDoubleSingle(CodeBuilder builder) {
+            builder.dup2X1();
+            builder.pop2();
+        }
 
-        public Object visit(final ArrayLookup node) {
+        public Object visit(ArrayLookup node) {
+            return processArrayLookup(node, true, null);
+        }
+        
+        protected void doIt() {
+            double[] x = { 235, 23 };
+            if ((x[0] = x[1] = 32) == 32) { doIt(); }  // load1, iconst0, load2, iconst1, const, dup_x2, store, dup_x2, store
+            // x[0] = x[1] = 32; // load1, iconst0 load1, iconst1, const dup_x2, store, store
+        }
+        
+        // TODO: for assignments
+        // - walk each assignment from left to right
+        //     - generate ref to stack (lookup ref, array ref and index, etc)
+        // - generate expr
+        // - walk each assignment from right to left
+        //     - generate setter (if last and is expr, dup; else not)
+
+        // TODO: allow a runtime to be passed in that gets
+        // invoked to generate the actual expr portion for writing
+        // so we do not have to do all this dup/swap logic...this
+        // also applies to processLookup above
+
+        protected Object processArrayLookup(final ArrayLookup node, 
+                                            final boolean reading,
+                                            final LocalVariable param) {
             // generate expression
             final Expression expr = node.getExpression();
             generate(expr);
             
             // generate null-safe check if necessary
-            generateNullSafe(node, expr, new NullSafeCallback() {
+            generateNullSafe(node, expr, reading ,new NullSafeCallback() {
                 public Type execute() {
-                    Method readMethod = node.getReadMethod();
+                    Method readWriteMethod = node.getReadWriteMethod();
                     Expression lookup = node.getLookupIndex();
     
                     Type type = expr.getType();
@@ -2107,27 +2241,76 @@ public class JavaClassGenerator extends CodeGenerator {
                     boolean doArrayLookup = lookupClass.isArray();
 
                     if (!doArrayLookup &&
-                        Modifier.isStatic(readMethod.getModifiers())) {
+                        Modifier.isStatic(readWriteMethod.getModifiers())) {
     
                         // Discard the object to call method on.
                         mBuilder.pop();
                     }
-    
-                    // generate lookup portion
-                    generate(lookup);
+                    
+                    if (reading) {
+                        generate(lookup);
+                    }
+                    else {
+                        boolean isDoubleWord = false;
+                        
+                        // we need to swap the current expr with the prior
+                        // loaded value as the param on the stack
+                        // we have to take into account the value being a 
+                        // single or double word
+                        if (isDoubleWord) { swapSingleDouble(mBuilder); }
+                        else { mBuilder.swap(); }
+                        
+                        // generate the lookup param
+                        generate(lookup);
+                        
+                        // now we need to swap the just added lookup with the
+                        // actual value param although this could be a mixture
+                        // of single or double words, so we have to account for
+                        // both
+                        if (makeDesc(lookup.getType()).isDoubleWord()) {
+                            if (isDoubleWord) { mBuilder.swap2(); }
+                            else { swapDoubleSingle(mBuilder); }
+                        }
+                        else {
+                            if (isDoubleWord) { swapSingleDouble(mBuilder); }
+                            else { mBuilder.swap(); }
+                        }
+                    }
+                    
                     setLineNumber(node.getLookupToken().getSourceInfo());
 
                     if (!doArrayLookup) {
-                        mBuilder.invoke(readMethod);
+                        mBuilder.invoke(readWriteMethod);
+                        
                         // TODO: do we need to checkCast here for generics?
+                        // for reading it has to happen here
+                        // for writing it has to happen before
                         //mBuilder.checkCast(makeDesc(node.getType()));
+
+                        if (!reading) {
+                            Class<?> retType = readWriteMethod.getReturnType();
+                            if (retType != null && retType != void.class) {
+                                if (makeDesc(retType).isDoubleWord()) {
+                                    mBuilder.pop2();
+                                }
+                                else { mBuilder.pop(); }
+                            }
+                        }
+
                         return node.getType();
                     }
                     else {
                         try {
                             Type elementType = 
                                 expr.getInitialType().getArrayElementType();
-                            mBuilder.loadFromArray(makeDesc(elementType));
+                            
+                            if (reading) {
+                                mBuilder.loadFromArray(makeDesc(elementType));
+                            }
+                            else {
+                                mBuilder.storeToArray(makeDesc(elementType));
+                            }
+                            
                             return elementType;
                         }
                         catch (IntrospectionException e) {
@@ -4857,7 +5040,7 @@ public class JavaClassGenerator extends CodeGenerator {
             
             // generate null-safe if provided
             if (expr != null) {
-                generateNullSafe(node, expr, callback);
+                generateNullSafe(node, expr, true, callback);
             }
             
             // otherwise, invoke callback by itself
@@ -4910,7 +5093,7 @@ public class JavaClassGenerator extends CodeGenerator {
 
 
         private void generateNullSafe(Expression node, Expression expr,
-                                      NullSafeCallback callback) {
+                                      boolean reading, NullSafeCallback callback) {
             // TODO: optimize this by skipping all remaining checks if first
             // part of null-safe fails..currently, the way this is written it
             // performs an ifnull check for each section:
@@ -4940,11 +5123,6 @@ public class JavaClassGenerator extends CodeGenerator {
             if (node instanceof NullSafe) {
                 NullSafe nullSafe = (NullSafe) node;
                 if (nullSafe.isNullSafe() && expr.getType().isNullable()) {
-                    // if type is primitive, convert
-                    //if (type != null && type.isPrimitive()) {
-                    //    typeConvertEnd(type, type.toNonPrimitive(), true);
-                    //}
-    
                     mBuilder.branch(endLocation);
                     elseLocation.setLocation();
                     
@@ -4952,25 +5130,40 @@ public class JavaClassGenerator extends CodeGenerator {
                     if (ntype != null && ntype.isPrimitive()) {
                         mBuilder.pop();
                         
-                        Class<?> primitive = ntype.getNaturalClass();
-                        if (primitive == boolean.class) { 
-                            mBuilder.loadConstant(false);
-                        }
-                        else if (primitive == long.class) { 
-                            mBuilder.loadConstant(0L);
-                        }
-                        else if (primitive == float.class) {
-                            mBuilder.loadConstant(0.0f);
-                        }
-                        else if (primitive == double.class) {
-                            mBuilder.loadConstant(0.0d);
+                        if (reading) {
+                            Class<?> primitive = ntype.getNaturalClass();
+                            if (primitive == boolean.class) { 
+                                mBuilder.loadConstant(false);
+                            }
+                            else if (primitive == long.class) { 
+                                mBuilder.loadConstant(0L);
+                            }
+                            else if (primitive == float.class) {
+                                mBuilder.loadConstant(0.0f);
+                            }
+                            else if (primitive == double.class) {
+                                mBuilder.loadConstant(0.0d);
+                            }
+                            else {
+                                mBuilder.loadConstant(0);
+                            }
                         }
                         else {
-                            mBuilder.loadConstant(0);
+                            // pop the actual value being set
+                            if (makeDesc(ntype).isDoubleWord()) { mBuilder.pop2(); }
+                            else { mBuilder.pop(); }
                         }
                     }
                     else {
-                        mBuilder.checkCast(makeDesc(ntype));
+                        if (reading) { mBuilder.checkCast(makeDesc(ntype)); }
+                        else { 
+                            // pop the left expr of the lookup expr
+                            mBuilder.pop();
+                            
+                            // pop the actual value being set
+                            if (makeDesc(ntype).isDoubleWord()) { mBuilder.pop2(); }
+                            else { mBuilder.pop(); }
+                        }
                     }
                     
                     endLocation.setLocation();
@@ -4997,7 +5190,7 @@ public class JavaClassGenerator extends CodeGenerator {
             
             // create assignment
             AssignmentExpression stmt = new AssignmentExpression(info, ref, expr);
-            generate(stmt);
+            generate(new ExpressionStatement(stmt));
             
             // return assignment
             return stmt;

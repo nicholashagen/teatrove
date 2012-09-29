@@ -101,6 +101,7 @@ public class Type implements java.io.Serializable {
     private transient Type mArrayElementType;
     private transient Type[] mArrayIndexTypes;
     private transient Method[] mArrayAccessMethods;
+    private transient Method[] mArrayMutationMethods;
     private transient boolean mCheckedForIteration;
     private transient Type mIterationElementType;
     private transient boolean mCheckedForKey;
@@ -192,6 +193,7 @@ public class Type implements java.io.Serializable {
         mArrayElementType = type.mArrayElementType;
         mArrayIndexTypes = type.mArrayIndexTypes;
         mArrayAccessMethods = type.mArrayAccessMethods;
+        mArrayMutationMethods = type.mArrayMutationMethods;
         mCheckedForIteration = type.mCheckedForIteration;
         mIterationElementType = type.mIterationElementType;
     }
@@ -397,6 +399,21 @@ public class Type implements java.io.Serializable {
     }
 
     /**
+     * If this Type supports array lookup as an assignment, then return all of 
+     * the methods that can be called to mutate the array. If there are no 
+     * methods, then an empty array is returned. Null is returned only if this 
+     * Type doesn't support array mutation.
+     */
+    public Method[] getArrayMutationMethods() throws IntrospectionException {
+        if (!mCheckedForArrayLookup) {
+            checkForArrayLookup();
+        }
+
+        return mArrayMutationMethods == null ? null :
+            (Method[])mArrayMutationMethods.clone();
+    }
+    
+    /**
      * If this type supports iteration, then the element type is returned.
      * Otherwise, null is returned.
      */
@@ -499,6 +516,7 @@ public class Type implements java.io.Serializable {
         if (mGenericType.isArray()) {
             mArrayElementType = new Type(mGenericType.getComponentType());
             mArrayAccessMethods = EMPTY_METHOD_ARRAY;
+            mArrayMutationMethods = EMPTY_METHOD_ARRAY;
             mArrayIndexTypes = new Type[] {INT_TYPE};
             return;
         }
@@ -518,6 +536,7 @@ public class Type implements java.io.Serializable {
             mArrayElementType =
                 new Type(keyed.getKeyedPropertyType().getRawType());
             mArrayAccessMethods = keyed.getKeyedReadMethods();
+            mArrayMutationMethods = keyed.getKeyedWriteMethods();
         }
         catch (ClassCastException e) {
             return;

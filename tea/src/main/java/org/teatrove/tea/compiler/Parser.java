@@ -868,10 +868,11 @@ public class Parser {
             while (peek().getID() == Token.ASSIGN) {
                 read();
                 if (!(expr instanceof Assignable)) {
-                    error("assignment.not.assignable", token);
+                    expr = null;
+                    error("assignment.lvalue.not.assignable", token);
                 }
                 
-                lvalues.push(expr);
+                if (expr != null) { lvalues.push(expr); }
                 expr = parseTernaryExpression(read());
             }
 

@@ -34,7 +34,7 @@ public class AssignmentExpression extends Expression {
     public AssignmentExpression(SourceInfo info,
                                 Expression lvalue, Expression rvalue) {
         super(info);
-        if (!(lvalue instanceof Assignable)) {
+        if (lvalue != null && !(lvalue instanceof Assignable)) {
             throw new IllegalStateException("lvalue must be assignable");
         }
         

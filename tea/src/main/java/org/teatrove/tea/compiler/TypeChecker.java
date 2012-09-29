@@ -805,40 +805,40 @@ public class TypeChecker {
                 }
                 else if (lvalue instanceof ArrayLookup) {
                     ArrayLookup lookup = (ArrayLookup) lvalue;
-                    // visit(lookup);
+                    processArrayLookup(lookup, false);
+                    
+                    Type ltype = lookup.getType();
+                    if (ltype != null && ltype.convertableFrom(type) == -1) {
+                        error("assignmentstatement.type.mismatch", 
+                              ltype.getFullName(), type.getFullName(), node);
+                    }
+                    else if (ltype != null) {
+                        // make sure we convert the right side to the 
+                        // appropriate type of the left side
+                        rvalue.convertTo(ltype);
+                        type = ltype;
+                    }
                 }
                 else if (lvalue instanceof Lookup) {
                     Lookup lookup = (Lookup) lvalue;
                     processLookup(lookup, false);
                     
                     Type ltype = lookup.getType();
-                    if (ltype.convertableFrom(type) == -1) {
-                        error("assignment.type.mismatch", 
+                    if (ltype != null && ltype.convertableFrom(type) == -1) {
+                        error("assignmentstatement.type.mismatch", 
                               ltype.getFullName(), type.getFullName(), node);
+                    }
+                    else if (ltype != null) {
+                        // make sure we convert the right side to the 
+                        //  appropriate type of the left side
+                        rvalue.convertTo(ltype);
+                        type = ltype;
                     }
                 }
                 else {
                     error("assignment.lvalue.unsupported", node);
                     return null;
                 }
-                
-                // TODO: if lvalue is array lookup
-                    // check (array lookup expr && array factor)
-                    // if array, array[x] = r
-                    // if list
-                        // if list unmodifiable, error not modifiable
-                        // else list.set(x, r)
-                    // if map
-                        // if map unmodifiable, error not modifiable
-                        // else map.put(x, r)
-                    // error unknown type
-                // TODO: if lvalue is lookup
-                    // check (lookup left && name)
-                    // lookup property
-                    // validate types convertable and convert
-                    // if no write method, error no write method
-                    // else, setWriteMethod
-                // TODO: else error unknown assignable expression
             }
 
             if (type == null || type.isVoid()) {
@@ -2324,6 +2324,21 @@ public class TypeChecker {
         }
 
         public Object visit(ArrayLookup node) {
+            return processArrayLookup(node, true);
+        }
+        
+        protected Object processArrayLookup(ArrayLookup node, boolean reading) {
+            // TODO: if lvalue is array lookup
+            // check (array lookup expr && array factor)
+            // if array, array[x] = r
+            // if list
+                // if list unmodifiable, error not modifiable
+                // else list.set(x, r)
+            // if map
+                // if map unmodifiable, error not modifiable
+                // else map.put(x, r)
+            // error unknown type
+            
             Expression expr = node.getExpression();
             Expression lookupIndex = node.getLookupIndex();
             check(expr);
@@ -2362,7 +2377,8 @@ public class TypeChecker {
 
                 Method[] methods;
                 try {
-                    methods = type.getArrayAccessMethods();
+                    if (reading) { methods = type.getArrayAccessMethods(); }
+                    else { methods = type.getArrayMutationMethods(); }
                 }
                 catch (IntrospectionException e) {
                     error(e.toString(), node);
@@ -2383,14 +2399,31 @@ public class TypeChecker {
                     }
                 }
                 else {
-                    int count = MethodMatcher.match(methods, null,
-                                                    new Type[] {lookupType});
+                    int count;
+                    if (reading) {
+                        count = MethodMatcher.match(
+                            methods, null, new Type[] { lookupType }
+                        );
+                    }
+                    else {
+                        count = MethodMatcher.match(
+                            methods, null, new Type[] { lookupType, type });
+                    }
+                    
                     if (count >= 1) {
                         Method m = methods[0];
                         lookupType = new Type(m.getParameterTypes()[0],
                                               m.getGenericParameterTypes()[0]);
-                        Type returnType = new Type(m.getReturnType(),
-                                                   m.getGenericReturnType());
+                        
+                        Type returnType;
+                        if (reading) {
+                            returnType = new Type(m.getReturnType(),
+                                                  m.getGenericReturnType());
+                        }
+                        else {
+                            returnType = new Type(m.getParameterTypes()[1],
+                                                  m.getGenericParameterTypes()[1]);
+                        }
 
                         // attempt to locate matching generic-based param
                         Type genericType = Generics.findType(returnType, type);
@@ -2404,8 +2437,8 @@ public class TypeChecker {
                         }
 
                         lookupIndex.convertTo(lookupType);
-                        node.setReadMethod(m);
-                        node.setType(new Type(m.getReturnType()));
+                        node.setReadWriteMethod(m); 
+                        node.setType(returnType);
                         node.convertTo(elementType);
                         good = true;
                     }

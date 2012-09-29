@@ -86,7 +86,7 @@ public class ArrayLookup extends Expression implements NullSafe, Assignable {
      * read method is null. A code generator must still be able to get
      * elements from an array.
      */
-    public Method getReadMethod() {
+    public Method getReadWriteMethod() {
         return mMethod;
     }
 
@@ -98,7 +98,7 @@ public class ArrayLookup extends Expression implements NullSafe, Assignable {
         mLookupIndex = lookupIndex;
     }
 
-    public void setReadMethod(Method m) {
+    public void setReadWriteMethod(Method m) {
         mMethod = m;
     }
     

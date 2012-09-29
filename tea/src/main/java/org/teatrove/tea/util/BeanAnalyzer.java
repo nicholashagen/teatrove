@@ -269,11 +269,13 @@ public class BeanAnalyzer {
         // Analyze design patterns for keyed properties.
 
         KeyedPropertyDescriptor keyed = new KeyedPropertyDescriptor();
-        List<Method> keyedMethods = new ArrayList<Method>();
+        List<Method> keyedGetters = new ArrayList<Method>();
+        List<Method> keyedSetters = new ArrayList<Method>();
 
         if (type.isArray()) {
             keyed.setKeyedPropertyType(type.getComponentType());
-            keyedMethods.add(null);
+            keyedGetters.add(null);
+            keyedSetters.add(null);
         }
 
         // Get index types and access methods.
@@ -283,11 +285,11 @@ public class BeanAnalyzer {
 
         Method[] methods = clazz.getMethods();
 
-        for (int i=0; i<methods.length; i++) {
+        for (int i = 0; i < methods.length; i++) {
             Method m = methods[i];
-            if (Modifier.isPublic(m.getModifiers()) &&
-                "get".equals(m.getName())) {
-
+            if (!Modifier.isPublic(m.getModifiers())) { continue; }
+            
+            if ("get".equals(m.getName())) {
                 Class<?> ret = m.getReturnType();
                 if (ret != null && ret != void.class) {
                     Class<?>[] params = m.getParameterTypes();
@@ -298,28 +300,39 @@ public class BeanAnalyzer {
 
                         // Found a method that fits the requirements.
                         keyed.setKeyedPropertyType(retType);
-                        keyedMethods.add(m);
+                        keyedGetters.add(m);
                     }
+                }
+            }
+            else if ("set".equals(m.getName()) || "put".equals(m.getName())) {
+                Class<?>[] params = m.getParameterTypes();
+                if (params.length == 2) {
+                    Type[] gparams = m.getGenericParameterTypes();
+                    
+                    GenericType paramType =
+                        new GenericType(root, params[1], gparams[1]);
+                    keyed.setKeyedPropertyType(paramType);
+                    keyedSetters.add(m);
                 }
             }
         }
 
-        if (keyedMethods.size() == 0) {
+        if (keyedGetters.size() == 0) {
             // If no "get" methods found, but this type is a Vector or
             // String, use elementAt or charAt as substitutes.
 
             if (Vector.class.isAssignableFrom(clazz)) {
                 try {
-                    Method m = Vector.class.getMethod
+                    Method m1 = Vector.class.getMethod
                         ("elementAt", new Class[] {int.class});
 
                     keyed.setKeyedPropertyType
                     (
-                        new GenericType(root, m.getReturnType(),
-                                        m.getGenericReturnType())
+                        new GenericType(root, m1.getReturnType(),
+                                        m1.getGenericReturnType())
                     );
 
-                    keyedMethods.add(m);
+                    keyedGetters.add(m1);
                 }
                 catch (NoSuchMethodException e) {
                     throw new LinkageError(e.toString());
@@ -335,7 +348,7 @@ public class BeanAnalyzer {
                         new GenericType(root, m.getReturnType(),
                                         m.getGenericReturnType())
                     );
-                    keyedMethods.add(m);
+                    keyedGetters.add(m);
                 }
                 catch (NoSuchMethodException e) {
                     throw new LinkageError(e.toString());
@@ -343,7 +356,7 @@ public class BeanAnalyzer {
             }
         }
 
-        if (keyedMethods.size() > 0) {
+        if (keyedGetters.size() > 0 || keyedSetters.size() > 0) {
             // Try to specialize keyed property type.
             try {
                 Field field = clazz.getField(ELEMENT_TYPE_FIELD_NAME);
@@ -364,9 +377,14 @@ public class BeanAnalyzer {
             }
 
             properties.put(KEYED_PROPERTY_NAME, keyed);
-            int size = keyedMethods.size();
+            
+            int rsize = keyedGetters.size();
             keyed.setKeyedReadMethods(
-                keyedMethods.toArray(new Method[size]));
+                keyedGetters.toArray(new Method[rsize]));
+            
+            int wsize = keyedSetters.size();
+            keyed.setKeyedWriteMethods(
+                keyedSetters.toArray(new Method[wsize]));
         }
 
         // Filter out properties with names that contain '$' characters.

@@ -35,6 +35,7 @@ import org.teatrove.trove.generics.GenericType;
 public class KeyedPropertyDescriptor extends PropertyDescriptor {
     private GenericType mPropertyType;
     private Method[] mKeyedGetters;
+    private Method[] mKeyedSetters;
 
     KeyedPropertyDescriptor() throws IntrospectionException {
         super(BeanAnalyzer.KEYED_PROPERTY_NAME, null, null);
@@ -44,13 +45,21 @@ public class KeyedPropertyDescriptor extends PropertyDescriptor {
      * A null element indicates that an array lookup should be performed.
      */
     public Method[] getKeyedReadMethods() {
-        return (Method[])mKeyedGetters.clone();
+        return mKeyedGetters.clone();
     }
 
     void setKeyedReadMethods(Method[] keyedGetters) {
         mKeyedGetters = keyedGetters;
     }
-
+    
+    public Method[] getKeyedWriteMethods() {
+        return mKeyedSetters.clone();
+    }
+    
+    void setKeyedWriteMethods(Method[] keyedSetters) {
+        mKeyedSetters = keyedSetters;
+    }
+    
     public GenericType getKeyedPropertyType() {
         return mPropertyType;
     }

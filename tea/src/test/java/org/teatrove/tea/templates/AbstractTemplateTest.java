@@ -8,6 +8,7 @@ import java.io.PrintStream;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -68,7 +69,17 @@ public abstract class AbstractTemplateTest {
         this.listeners.add(listener);
     }
     
+    public void clearMockListeners() {
+        Iterator<CompileListener> iterator = this.listeners.iterator();
+        while (iterator.hasNext()) {
+            if (iterator.next() instanceof MockCompileListener) {
+                iterator.remove();
+            }
+        }
+    }
+    
     public void adddMockListener(int expectedErrors, int expectedWarnings) {
+        clearMockListeners();
         addCompileListener(new MockCompileListener(expectedErrors, 
                                                    expectedWarnings));
     }
@@ -283,6 +294,13 @@ public abstract class AbstractTemplateTest {
                        getTemplateSource(index, source, signature), params);
     }
 
+    public void compileSource(String source)
+        throws Exception {
+
+        int index = counter.incrementAndGet();
+        compile(getTemplateName(index), getTemplateSource(index, source));
+    }
+    
     public void compileSource(String name, String type, String signature)
         throws Exception {
 

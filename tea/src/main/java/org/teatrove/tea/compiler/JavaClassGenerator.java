@@ -50,6 +50,7 @@ import org.teatrove.tea.parsetree.ContinueStatement;
 import org.teatrove.tea.parsetree.ExceptionGuardStatement;
 import org.teatrove.tea.parsetree.Expression;
 import org.teatrove.tea.parsetree.Expression.Conversion;
+import org.teatrove.tea.parsetree.BetweenExpression;
 import org.teatrove.tea.parsetree.ExpressionList;
 import org.teatrove.tea.parsetree.ExpressionStatement;
 import org.teatrove.tea.parsetree.ForeachStatement;
@@ -2550,6 +2551,11 @@ public class JavaClassGenerator extends CodeGenerator {
             generateLogical(node);
             return null;
         }
+        
+        public Object visit(BetweenExpression node) {
+            // TODO: process
+            throw new UnsupportedOperationException("BetweenExpression");
+        }
 
         public Object visit(NotExpression node) {
             generateLogical(node);
@@ -3368,37 +3374,58 @@ public class JavaClassGenerator extends CodeGenerator {
                 }
                 else {
                     generate(expr);
-                    LocalVariable local =
-                        mBuilder.createLocalVariable(null, makeDesc(type));
-                    mBuilder.storeLocal(local);
 
+                    // load the variable for variable refs to avoid duplicating
+                    // local variables
+                    Variable var = null;
+                    if (expr instanceof VariableRef) {
+                        var = ((VariableRef) expr).getVariable(); 
+                    }
+                    
+                    // create a temp local variable for non-variable refs
+                    // as long as we are nullable such that we must make two
+                    // checks (null and truth)
+                    LocalVariable local = null;
+                    if (var == null && type.isNullable()) {
+                        TypeDesc desc = makeDesc(type);
+                        if (desc.isDoubleWord()) { mBuilder.dup2(); }
+                        else { mBuilder.dup(); }
+                        
+                        local = mBuilder.createLocalVariable(null, desc);
+                        mBuilder.storeLocal(local);
+                    }
+
+                    // create a branch to go to in order to evaluate the truth
+                    // check after the null check...only valid if we need the
+                    // null check
                     Label branch = null;
-                    if (invert) {
+                    if (_whenTrue && type.isNullable()) {
                         branch = mBuilder.createLabel();
                     }
                     
                     // test for null (false value)
                     if (type.isNullable()) {
-                        mBuilder.loadLocal(local);
-                        mBuilder.ifNullBranch(invert ? branch : label, 
-                            !whenTrue);
+                        mBuilder.ifNullBranch(_whenTrue ? branch : label, true);
                     }
 
-                    mBuilder.loadLocal(local);
+                    // if we have a local variable from earlier, load it
+                    // otherwise, if we have a reference load that
+                    if (local != null) { mBuilder.loadLocal(local); }
+                    else if (var != null) { loadFromVariable(var); }
                     Class<?> clazz = type.getNaturalClass();
 
                     // handle truthful values
                     if (Truthful.class.isAssignableFrom(clazz)) {
                         mBuilder.invoke(getMethod(Truthful.class, "isTrue"));
-                        mBuilder.ifZeroComparisonBranch(invert ? branch : label, 
-                            whenTrue ? "!=" : "==");
+                        mBuilder.ifZeroComparisonBranch(label, 
+                            _whenTrue ? "!=" : "==");
                     }
 
                     // handle boolean values
                     else if (Boolean.class.isAssignableFrom(clazz)) {
                         mBuilder.invoke(getMethod(Boolean.class, "booleanValue"));
-                        mBuilder.ifZeroComparisonBranch(invert ? branch : label, 
-                            whenTrue ? "!=" : "==");
+                        mBuilder.ifZeroComparisonBranch(label, 
+                            _whenTrue ? "!=" : "==");
                     }
 
                     // handle numeric values
@@ -3412,8 +3439,8 @@ public class JavaClassGenerator extends CodeGenerator {
                                 typeConvertEnd(type, ctype, false);
                             }
                             
-                            generateZeroComparison(invert ? branch : label, 
-                                whenTrue ? "!=" : "==", ctype);
+                            generateZeroComparison(label, 
+                                _whenTrue ? "!=" : "==", ctype);
                         }
                         
                         // otherwise, test at runtime to evaluate
@@ -3425,37 +3452,37 @@ public class JavaClassGenerator extends CodeGenerator {
                             );
                             
                             mBuilder.invoke(method);
-                            mBuilder.ifZeroComparisonBranch(invert ? branch : label, 
-                                whenTrue ? "!=" : "==");
+                            mBuilder.ifZeroComparisonBranch(label, 
+                                _whenTrue ? "!=" : "==");
                         }
                     }
 
                     // handle string values
                     else if (String.class.isAssignableFrom(clazz)) {
                         mBuilder.invoke(getMethod(String.class, "length"));
-                        mBuilder.ifZeroComparisonBranch(invert ? branch : label, 
-                            whenTrue ? "!=" : "==");
+                        mBuilder.ifZeroComparisonBranch(label, 
+                            _whenTrue ? "!=" : "==");
                     }
 
                     // handle array values
                     else if (clazz.isArray()) {
                         mBuilder.arrayLength();
-                        mBuilder.ifZeroComparisonBranch(invert ? branch : label, 
-                            whenTrue ? "!=" : "==");
+                        mBuilder.ifZeroComparisonBranch(label, 
+                            _whenTrue ? "!=" : "==");
                     }
 
                     // handle collection values
                     else if (Collection.class.isAssignableFrom(clazz)) {
                         mBuilder.invoke(getMethod(Collection.class, "size"));
-                        mBuilder.ifZeroComparisonBranch(invert ? branch : label, 
-                            whenTrue ? "!=" : "==");
+                        mBuilder.ifZeroComparisonBranch(label, 
+                            _whenTrue ? "!=" : "==");
                     }
                     
                     // handle map values
                     else if (Map.class.isAssignableFrom(clazz)) {
                         mBuilder.invoke(getMethod(Map.class, "size"));
-                        mBuilder.ifZeroComparisonBranch(invert ? branch : label, 
-                            whenTrue ? "!=" : "==");
+                        mBuilder.ifZeroComparisonBranch(label, 
+                            _whenTrue ? "!=" : "==");
                     }
 
                     // any other case, just pop last value (assume true)
@@ -3464,15 +3491,17 @@ public class JavaClassGenerator extends CodeGenerator {
                         // warn("truthful.object.expression", expr);
                         
                         mBuilder.pop();
-                        if (whenTrue) { 
-                            mBuilder.branch(invert ? branch : label); 
+                        if (_whenTrue) { 
+                            mBuilder.branch(label); 
                         }
                     }
-                    
-                    // if this is an inversion, then we must jump to the label
-                    // at this point followed by our label for the branch point
-                    if (invert) {
-                        mBuilder.branch(label);
+
+                    // set the location to jump the null check to for when the
+                    // request was to jump to the actual label if only true
+                    // this branch is placed here as the next lines of code
+                    // are the false aspect.  If the null check fails, it is
+                    // not true and thus it jump here.
+                    if (branch != null) {
                         branch.setLocation();
                     }
                 }

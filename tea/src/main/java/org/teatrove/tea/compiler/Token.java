@@ -172,10 +172,12 @@ public class Token implements java.io.Serializable {
     public final static int CONTINUE = 59;
     /** Token ID for the class keyword: 'class' */
     public final static int CLASS = 60;
+    /** Token ID for the between keyword: 'between' */
+    public final static int BETWEEN = 61;
 
-    private final static int LAST_RESERVED_ID = 60;
+    private final static int LAST_RESERVED_ID = 61;
 
-    private final static int LAST_ID = 60;
+    private final static int LAST_ID = 61;
 
     private int mTokenID;
     private SourceInfo mInfo;
@@ -302,7 +304,8 @@ public class Token implements java.io.Serializable {
             if (matches(word, "as")) return AS;
             break;
         case 'b':
-            if(matches(word, "break")) return BREAK;
+            if (matches(word, "between")) return BETWEEN;
+            if (matches(word, "break")) return BREAK;
             break;
         case 'c':
             if (matches(word, "call")) return CALL;
@@ -577,7 +580,8 @@ public class Token implements java.io.Serializable {
             "as",
             "import",
             "continue",
-            "class"
+            "class",
+            "between"
         };
 
         public static final String[] TOKEN_CODES =
@@ -648,7 +652,8 @@ public class Token implements java.io.Serializable {
             "AS",
             "IMPORT",
             "CONTINUE",
-            "CLASS"
+            "CLASS",
+            "BETWEEN"
         };
 
         static {

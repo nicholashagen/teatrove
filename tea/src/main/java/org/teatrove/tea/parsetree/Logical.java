@@ -26,6 +26,8 @@ package org.teatrove.tea.parsetree;
  * @see AndExpression
  * @see OrExpression
  * @see RelationalExpression
+ * @see BetweenExpression
+ * @see BinaryLogicalExpression
  */
 public interface Logical {
     //public void accept(LogicalVisitor visitor);

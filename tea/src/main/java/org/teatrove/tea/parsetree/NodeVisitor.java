@@ -85,6 +85,7 @@ public interface NodeVisitor {
     public Object visit(NoOpExpression node);
     public Object visit(SpreadExpression node);
     public Object visit(TypeExpression node);
+    public Object visit(BetweenExpression node);
 
     public Object visit(NullLiteral node);
     public Object visit(BooleanLiteral node);

@@ -285,6 +285,13 @@ public abstract class TreeWalker implements NodeVisitor {
             return visit((BinaryExpression)node);
         }
     }
+    
+    public Object visit(BetweenExpression node) {
+        node.getExpression().accept(this);
+        node.getLowerBounds().accept(this);
+        node.getUpperBounds().accept(this);
+        return null;
+    }
 
     public Object visit(AndExpression node) {
         return visit((BinaryExpression)node);

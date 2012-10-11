@@ -36,6 +36,7 @@ import org.teatrove.tea.parsetree.AndExpression;
 import org.teatrove.tea.parsetree.ArithmeticExpression;
 import org.teatrove.tea.parsetree.ArrayLookup;
 import org.teatrove.tea.parsetree.AssignmentExpression;
+import org.teatrove.tea.parsetree.BetweenExpression;
 import org.teatrove.tea.parsetree.BinaryExpression;
 import org.teatrove.tea.parsetree.Block;
 import org.teatrove.tea.parsetree.BooleanLiteral;
@@ -2774,6 +2775,12 @@ public class TypeChecker {
             }
 
             return null;
+        }
+        
+        public Object visit(BetweenExpression node) {
+            // TODO: handle
+            // 
+            throw new UnsupportedOperationException("BetweenExpression");
         }
 
         public Object visit(AndExpression node) {

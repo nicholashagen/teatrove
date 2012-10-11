@@ -28,6 +28,7 @@ import org.teatrove.tea.parsetree.ConcatenateExpression;
 import org.teatrove.tea.parsetree.ContinueStatement;
 import org.teatrove.tea.parsetree.Expression;
 import org.teatrove.tea.parsetree.Expression.Conversion;
+import org.teatrove.tea.parsetree.BetweenExpression;
 import org.teatrove.tea.parsetree.ForeachStatement;
 import org.teatrove.tea.parsetree.IfStatement;
 import org.teatrove.tea.parsetree.Literal;
@@ -702,6 +703,20 @@ public class BasicOptimizer {
 
             node.setLeftExpression(left);
             node.setRightExpression(right);
+            return node;
+        }
+        
+        public Object visit(BetweenExpression node) {
+            Expression expr = visitExpression(node.getExpression());
+            Expression lower = visitExpression(node.getLowerBounds());
+            Expression upper = visitExpression(node.getUpperBounds());
+            
+            // TODO: if expr is known and lower and upper is known
+                // return new Boolean literal
+            
+            node.setExpression(expr);
+            node.setLowerBounds(lower);
+            node.setUpperBounds(upper);
             return node;
         }
 

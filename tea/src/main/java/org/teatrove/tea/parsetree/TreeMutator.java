@@ -292,6 +292,13 @@ public abstract class TreeMutator implements NodeVisitor {
             return visit((BinaryExpression)node);
         }
     }
+    
+    public Object visit(BetweenExpression node) {
+        node.setExpression(visitExpression(node.getExpression()));
+        node.setLowerBounds(visitExpression(node.getLowerBounds()));
+        node.setUpperBounds(visitExpression(node.getUpperBounds()));
+        return node;
+    }
 
     public Object visit(AndExpression node) {
         return visit((BinaryExpression)node);

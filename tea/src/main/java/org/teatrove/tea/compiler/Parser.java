@@ -27,6 +27,7 @@ import org.teatrove.tea.parsetree.ArithmeticExpression;
 import org.teatrove.tea.parsetree.ArrayLookup;
 import org.teatrove.tea.parsetree.Assignable;
 import org.teatrove.tea.parsetree.AssignmentExpression;
+import org.teatrove.tea.parsetree.BetweenExpression;
 import org.teatrove.tea.parsetree.Block;
 import org.teatrove.tea.parsetree.BooleanLiteral;
 import org.teatrove.tea.parsetree.BreakStatement;
@@ -1039,6 +1040,24 @@ public class Parser {
                 TypeName typeName = parseTypeName();
                 info = info.setEndPosition(typeName.getSourceInfo());
                 expr = new RelationalExpression(info, token, expr, typeName);
+                break;
+            case Token.BETWEEN:
+                read();
+                Expression upper = null;
+                Expression lower = parseCompareExpression(read());
+                
+                token = peek();
+                if (token.getID() != Token.AND) {
+                    error("between.missing.and", token);
+                    info = info.setEndPosition(lower.getSourceInfo());
+                }
+                else {
+                    read();
+                    upper = parseCompareExpression(read());
+                    info = info.setEndPosition(upper.getSourceInfo());
+                }
+                
+                expr = new BetweenExpression(info, expr, lower, upper);
                 break;
             default:
                 break loop;

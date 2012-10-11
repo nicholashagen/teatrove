@@ -26,6 +26,7 @@ import org.teatrove.tea.parsetree.AndExpression;
 import org.teatrove.tea.parsetree.ArithmeticExpression;
 import org.teatrove.tea.parsetree.ArrayLookup;
 import org.teatrove.tea.parsetree.AssignmentExpression;
+import org.teatrove.tea.parsetree.BetweenExpression;
 import org.teatrove.tea.parsetree.BinaryExpression;
 import org.teatrove.tea.parsetree.Block;
 import org.teatrove.tea.parsetree.BooleanLiteral;
@@ -579,16 +580,28 @@ public class TreePrinter extends CodeGenerator {
                 return visit((BinaryExpression)node);
             }
             else {
-                if (mExtraParens) print("(");
+                if (mExtraParens) { print("("); }
                 node.getLeftExpression().accept(this);
                 print(" ");
                 print(node.getOperator().getImage());
                 print(" ");
                 node.getIsaTypeName().accept(this);
-                if (mExtraParens) print(")");
+                if (mExtraParens) { print(")"); }
                 
                 return null;
             }
+        }
+        
+        public Object visit(BetweenExpression node) {
+            if (mExtraParens) { print("("); }
+            node.getExpression().accept(this);
+            print(" between ");
+            node.getLowerBounds().accept(this);
+            print(" and ");
+            node.getUpperBounds().accept(this);
+            if (mExtraParens) { print(")"); }
+            
+            return null;
         }
 
         public Object visit(AndExpression node) {

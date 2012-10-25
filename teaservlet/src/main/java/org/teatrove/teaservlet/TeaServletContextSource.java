@@ -54,14 +54,16 @@ public class TeaServletContextSource extends MergedContextSource {
         mLog = log;
         mProfilingEnabled = profilingEnabled;
         Application[] applications = appDepot.getApplications();
-        String[] prefixes = appDepot.getContextPrefixNames();       
+        String[] prefixes = appDepot.getContextPrefixNames();     
+        boolean[] overrides = appDepot.getContextOverrides();
         DynamicContextSource[] contextSources =  
             new DynamicContextSource[applications.length + len];
 
         mApplications = applications;       
         mDynSources = contextSources;
-
+        
         String[] mungedPrefixes = new String[contextSources.length];
+        boolean[] mungedOverrides = new boolean[contextSources.length];
 
         if (prependWithHttpContext) {
             // Create the Http context MBean if it is configured to do so.
@@ -76,12 +78,14 @@ public class TeaServletContextSource extends MergedContextSource {
 
         for (int i = 0; i < prefixes.length; i++) {
             String prefix = prefixes[i];
+            boolean override = overrides[i];
 
             if (prefix != null && !prefix.endsWith("$")) {
                 prefix += "$";
             }
 
             mungedPrefixes[i + len] = prefix;
+            mungedOverrides[i + len] = override;
         }
 
         for (int j = 0; j < applications.length; j++) {
@@ -89,7 +93,7 @@ public class TeaServletContextSource extends MergedContextSource {
                 new ApplicationContextSource(applications[j]);
         }
 
-        init(loader, contextSources, mungedPrefixes, profilingEnabled);
+        init(loader, contextSources, mungedPrefixes, mungedOverrides, profilingEnabled);
     }
 
 

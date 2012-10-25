@@ -12,6 +12,7 @@ Change History
 
 4.1.2 to 4.2.0
 =============================
+- Fix #209 adding override support for context sources and merged classes
 - Fix #188 fixing cluster/peers and compilation exceptions
 - Adding BeanInfo plugin to generate bean info properties
 - Fix #157 adding back UtilityContext for backwards compatibility

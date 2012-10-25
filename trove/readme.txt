@@ -8,6 +8,7 @@ Change History
 
 4.1.2 to 4.2.0
 ===============================
+- Fix #209 adding override support for context sources and merged classes
 - Adding ability to clear ByteBuffers and cleaning up JDK warnings to JDK 5
 - Fix #157 adding ability to provide merged context with additional interfaces
 - Fix #152 fixing signature calculation for wildcard types using 'super'

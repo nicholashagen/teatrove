@@ -72,5 +72,5 @@ public interface Application {
      *
      * @return the class that the createContext method will return
      */
-    public Class getContextType();
+    public Class<?> getContextType();
 }

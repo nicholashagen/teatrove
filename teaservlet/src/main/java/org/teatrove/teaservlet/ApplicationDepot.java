@@ -18,6 +18,7 @@ package org.teatrove.teaservlet;
 
 import java.util.*;
 import javax.servlet.*;
+
 import org.teatrove.trove.log.*;
 import org.teatrove.trove.util.PropertyMap;
 import org.teatrove.trove.util.StatusEvent;
@@ -42,8 +43,7 @@ public class ApplicationDepot {
     private ContextSource mGenericContextSource;
 
     // a map to retrieve applications by name.
-    private Map mAppMap;
-    private Map mAppContextMap;
+    private Map<String, Application> mAppMap;
 
     // an array containing the applications in the order of initialization.
     private Application[] mApplications;
@@ -51,6 +51,8 @@ public class ApplicationDepot {
     private String[] mApplicationNames;
     // same as above, but cleaned to contain only valid java identifiers
     private String[] mContextPrefixNames;
+    // an array containing which applications are default/override in conflicts
+    private boolean[] mContextOverrides;
 
 
     /**
@@ -105,14 +107,14 @@ public class ApplicationDepot {
         mContextSource = contextSource;
     }
 
-    public final Class getContextType() throws Exception {
+    public final Class<?> getContextType() throws Exception {
             return getContextSource().getContextType();
     }
 
     public Application[] getApplications() {
         return mApplications;
     }
-
+    
     public Application getApplicationForClassName(String className) {
 
         for (int i = 0; i < mApplications.length; i++) {
@@ -131,6 +133,10 @@ public class ApplicationDepot {
         return mContextPrefixNames;
     }
 
+    public boolean[] getContextOverrides() {
+        return mContextOverrides;
+    }
+    
     /**
      * This method destroys the ApplicationDepot.
      */
@@ -158,16 +164,18 @@ public class ApplicationDepot {
                                            mEngine.getProperties().getBoolean("profiling.enabled", true));
     }
 
+    @SuppressWarnings("unchecked")
     private void loadApplications() throws ServletException {
 
         StatusListener listener = mEngine.getApplicationListener();
         PropertyMap props = mEngine.getProperties().subMap("applications");
-        Set appSet = props.subMapKeySet();
+        Set<String> appSet = props.subMapKeySet();
 
-        mAppMap = new TreeMap();
+        mAppMap = new TreeMap<String, Application>();
 
-        List lApplications = new ArrayList();
-        List lAppNames = new ArrayList();
+        List<ApplicationWrapper> lApplications = 
+            new ArrayList<ApplicationWrapper>();
+        List<String> lAppNames = new ArrayList<String>();
 
         Log log = mEngine.getLog();
         log.info("Loading Applications");
@@ -177,14 +185,14 @@ public class ApplicationDepot {
             listener.statusStarted(new StatusEvent(this, index, count, null));
         }
         
-        for (Iterator appIt = appSet.iterator(); appIt.hasNext(); ) {
-            String appName = (String)appIt.next();
+        for (Iterator<String> appIt = appSet.iterator(); appIt.hasNext(); ) {
+            String appName = appIt.next();
 
             log.info("Loading: " + appName);
 
 			PropertyMap appProps = props.subMap(appName);
             String appClassName = appProps.getString("class");
-
+            boolean isOverride = appProps.getBoolean("override", false);
             log.debug("Application class: (" + appClassName + ")");
 
             if (appClassName == null) {
@@ -202,9 +210,10 @@ public class ApplicationDepot {
 				Application app = (Application)getClass()
 					.getClassLoader().loadClass(appClassName)
 					.newInstance();
-
+				
 				app.init(ac);
-				lApplications.add(app);
+				
+				lApplications.add(new ApplicationWrapper(app, appName, isOverride));
 				lAppNames.add(appName);
 				mAppMap.put(appName, app);
 			}
@@ -236,11 +245,14 @@ public class ApplicationDepot {
         mApplications = new Application[numApps];
 		mApplicationNames = new String[numApps];
         mContextPrefixNames = new String[numApps];
+        mContextOverrides = new boolean[numApps];
 
         for (int x = 0; x < numApps; x++) {
-			mApplications[x] = (Application)lApplications.get(x);
-			mApplicationNames[x] = (String)lAppNames.get(x);
+            ApplicationWrapper app = lApplications.get(x); 
+			mApplications[x] = app.getApplication();
+			mApplicationNames[x] = lAppNames.get(x);
 			mContextPrefixNames[x] = cleanName(mApplicationNames[x]);
+			mContextOverrides[x] = app.isOverride();
 		}
         
         if (listener != null) {
@@ -283,11 +295,42 @@ public class ApplicationDepot {
 
         return buf.toString();
     }
+    
+    protected static class ApplicationWrapper implements Application {
+        private Application application;
+        private String prefix;
+        private boolean isOverride;
+        
+        public ApplicationWrapper(Application application, String prefix,
+                                  boolean isOverride) {
+            this.application = application;
+            this.prefix = prefix;
+            this.isOverride = isOverride;
+        }
+        
+        public Application getApplication() { return this.application; }
+        public String getPrefix() { return this.prefix; }
+        public boolean isOverride() { return this.isOverride; }
+
+        @Override
+        public void init(ApplicationConfig config) throws ServletException {
+            this.application.init(config);
+        }
+
+        @Override
+        public void destroy() {
+            this.application.destroy();
+        }
+
+        @Override
+        public Object createContext(ApplicationRequest request,
+                                    ApplicationResponse response) {
+            return this.application.createContext(request, response);
+        }
+
+        @Override
+        public Class<?> getContextType() {
+            return this.application.getContextType();
+        }
+    }
 }
-
-
-
-
-
-
-

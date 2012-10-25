@@ -765,7 +765,7 @@ public class TypeChecker {
                     check(loopVar.getVariable().getTypeName());
                     try {
                         if (rangeType.getIterationElementType() == null)
-                            error("foreach.as.collection.required", rangeType.getSimpleName(), range);
+                            error("foreach.as.collection.required", rangeType.getFullName(), range);
                     }
                     catch (IntrospectionException e) {
                         error(e.toString(), node);
@@ -778,8 +778,8 @@ public class TypeChecker {
                             && !elementType.getNaturalClass().isAssignableFrom(
                             rangeClass.getComponentType()))) {
                         try {
-                            error("foreach.as.not.assignable", elementType.getSimpleName(),
-                                rangeType.getArrayElementType().getSimpleName(), range);
+                            error("foreach.as.not.assignable", elementType.getFullName(),
+                                rangeType.getArrayElementType().getFullName(), range);
                         }
                         catch (IntrospectionException e) {
                             error(e.toString(), node);
@@ -800,7 +800,7 @@ public class TypeChecker {
 
                 if (elementType == null) {
                     error("foreach.iteration.not.supported",
-                          rangeType.getSimpleName(), range);
+                          rangeType.getFullName(), range);
                 }
                 else {
                     checkAccess(elementType.getNaturalClass(), range);
@@ -808,7 +808,7 @@ public class TypeChecker {
                     if (node.isReverse() &&
                         !rangeType.isReverseIterationSupported()) {
                         error("foreach.reverse.not.supported",
-                              rangeType.getSimpleName(), range);
+                              rangeType.getFullName(), range);
                     }
                 }
             }
@@ -817,7 +817,7 @@ public class TypeChecker {
 
                 if (!Number.class.isAssignableFrom(rangeClass)) {
                     error("foreach.range.start",
-                          rangeType.getSimpleName(), range);
+                          rangeType.getFullName(), range);
                     range.setType(elementType);
                 }
                 else {
@@ -829,7 +829,7 @@ public class TypeChecker {
                 Class<?> endRangeClass = endRangeType.getObjectClass();
                 if (!Number.class.isAssignableFrom(endRangeClass)) {
                     error("foreach.range.end",
-                          endRangeType.getSimpleName(), endRange);
+                          endRangeType.getFullName(), endRange);
                     endRange.setType(elementType);
                 }
                 else {
@@ -1134,7 +1134,7 @@ public class TypeChecker {
 
                 if (cnt < 1) {
                     error("expressionstatement.receiver",
-                          expr.getType().getSimpleName(), node);
+                          expr.getType().getFullName(), node);
                 }
                 else {
                     Method receiver = methods[0];
@@ -1165,8 +1165,8 @@ public class TypeChecker {
             else {
                 Type newType = mReturnType.getCompatibleType(type);
                 if (newType == null) {
-                    error("returnstatement.type", type.getSimpleName(),
-                          mReturnType.getSimpleName(), node);
+                    error("returnstatement.type", type.getFullName(),
+                          mReturnType.getFullName(), node);
                 }
                 mReturnType = newType;
 
@@ -1800,7 +1800,7 @@ public class TypeChecker {
                 PropertyDescriptor prop = properties.get(lookupName);
                 // TODO: consider checking if public field named lookupName
                 if (prop == null) {
-                    error("lookup.undefined", lookupName, type.getSimpleName(),
+                    error("lookup.undefined", lookupName, type.getFullName(),
                           node.getLookupName());
                     return null;
                 }
@@ -1902,7 +1902,7 @@ public class TypeChecker {
                 }
 
                 if (elementType == null) {
-                    error("arraylookup.unsupported", type.getSimpleName(),
+                    error("arraylookup.unsupported", type.getFullName(),
                           node.getLookupToken());
 
                     return null;
@@ -1970,8 +1970,8 @@ public class TypeChecker {
                     }
                 }
                 else {
-                    error("arraylookup.unsupported.for", type.getSimpleName(),
-                          lookupType.getSimpleName(), lookupIndex);
+                    error("arraylookup.unsupported.for", type.getFullName(),
+                          lookupType.getFullName(), lookupIndex);
                 }
             }
 
@@ -2084,18 +2084,18 @@ public class TypeChecker {
 
             if (!clazz.isAssignableFrom(leftType.getObjectClass())) {
                 if (!clazz.isAssignableFrom(rightType.getObjectClass())) {
-                    String name = new Type(clazz).getSimpleName();
+                    String name = new Type(clazz).getFullName();
                     error("binaryexpression.type.both",
                           expr.getOperator().getImage(), name, expr);
                 }
                 else {
-                    String name = new Type(clazz).getSimpleName();
+                    String name = new Type(clazz).getFullName();
                     error("binaryexpression.type.left",
                           expr.getOperator().getImage(), name, left);
                 }
             }
             else if (!clazz.isAssignableFrom(rightType.getObjectClass())) {
-                String name = new Type(clazz).getSimpleName();
+                String name = new Type(clazz).getFullName();
                 error("binaryexpression.type.right",
                       expr.getOperator().getImage(), name, right);
             }
@@ -2210,8 +2210,8 @@ public class TypeChecker {
                 }
                 else {
                     error("relationalexpression.type.mismatch",
-                          token.getImage(), left.getType().getSimpleName(),
-                          right.getType().getSimpleName(), node);
+                          token.getImage(), left.getType().getFullName(),
+                          right.getType().getFullName(), node);
                 }
             }
 
@@ -2259,7 +2259,7 @@ public class TypeChecker {
                          typeName.getSourceInfo().getDetailPosition());
 
                     error("relationalexpression.isa.impossible",
-                          leftType.getSimpleName(), rightType.getSimpleName(),
+                          leftType.getFullName(), rightType.getFullName(),
                           info);
                 }
             }

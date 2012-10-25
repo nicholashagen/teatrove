@@ -176,7 +176,8 @@ public class MergedClass {
                                                 String[] prefixes)
         throws IllegalArgumentException {
 
-        return getConstructor(injector, classes, prefixes, null, OBSERVER_DISABLED);
+        return getConstructor(injector, classes, prefixes, null, 
+                              OBSERVER_DISABLED);
     }
 
     public static Constructor<?> getConstructor(ClassInjector injector,
@@ -185,7 +186,24 @@ public class MergedClass {
                                                 Class<?>[] interfaces)
         throws IllegalArgumentException {
 
-        return getConstructor(injector, classes, prefixes, interfaces, OBSERVER_DISABLED);
+        return getConstructor(injector, classes, prefixes, interfaces, 
+                              OBSERVER_DISABLED);
+    }
+    
+    public static Constructor<?> getConstructor(ClassInjector injector,
+                                                ClassEntry[] classEntries)
+        throws IllegalArgumentException {
+
+        return getConstructor(injector, classEntries, null, OBSERVER_DISABLED);
+    }
+    
+    public static Constructor<?> getConstructor(ClassInjector injector,
+                                                ClassEntry[] classEntries,
+                                                Class<?>[] interfaces)
+        throws IllegalArgumentException {
+
+        return getConstructor(injector, classEntries, interfaces, 
+                              OBSERVER_DISABLED);
     }
     
     /**
@@ -265,6 +283,46 @@ public class MergedClass {
             throw new InternalError(e.toString());
         }
     }
+
+    public static Constructor<?> getConstructor(ClassInjector injector,
+                                                ClassEntry[] classEntries,
+                                                int observerMode)
+        throws IllegalArgumentException
+    {
+        return getConstructor(injector, classEntries, null, observerMode); 
+    }
+    
+    public static Constructor<?> getConstructor(ClassInjector injector,
+                                                ClassEntry[] classEntries,
+                                                Class<?>[] interfaces,
+                                                int observerMode)
+        throws IllegalArgumentException
+    {
+        if (classEntries.length > 254) {
+            throw new IllegalArgumentException
+                ("More than 254 merged classes: " + classEntries.length);
+        }
+
+        Class<?> clazz = 
+            getMergedClass(injector, classEntries, interfaces, observerMode);
+
+        ArrayList<Class<?>> classList = 
+            new ArrayList<Class<?>>(classEntries.length + 1);
+        if ((observerMode & OBSERVER_ENABLED) != 0) {
+            classList.add(InvocationEventObserver.class);
+        }
+        
+        for (int i = 0; i < classEntries.length; i++) {
+            classList.add(classEntries[i].getClazz());
+        }
+
+        try {
+            return clazz.getConstructor(classList.toArray(new Class[classList.size()]));
+        }
+        catch (NoSuchMethodException e) {
+            throw new InternalError(e.toString());
+        }
+    }
     
     /**
      * Returns the constructor for a class that merges all of the given source
@@ -334,7 +392,8 @@ public class MergedClass {
                                                  Class<?>[] classes,
                                                  String[] prefixes)
             throws IllegalArgumentException {
-        return getConstructor2(injector, classes, prefixes, null, OBSERVER_DISABLED);
+        return getConstructor2(injector, classes, prefixes, null, 
+                               OBSERVER_DISABLED);
     }
     
     public static Constructor<?> getConstructor2(ClassInjector injector,
@@ -342,7 +401,23 @@ public class MergedClass {
                                                  String[] prefixes,
                                                  Class<?>[] interfaces)
             throws IllegalArgumentException {
-        return getConstructor2(injector, classes, prefixes, interfaces, OBSERVER_DISABLED);
+        return getConstructor2(injector, classes, prefixes, interfaces, 
+                               OBSERVER_DISABLED);
+    }
+    
+    public static Constructor<?> getConstructor2(ClassInjector injector,
+                                                 ClassEntry[] classEntries)
+            throws IllegalArgumentException {
+        return getConstructor2(injector, classEntries, null, 
+                               OBSERVER_DISABLED);
+    }
+    
+    public static Constructor<?> getConstructor2(ClassInjector injector,
+                                                 ClassEntry[] classEntries,
+                                                 Class<?>[] interfaces)
+            throws IllegalArgumentException {
+        return getConstructor2(injector, classEntries, interfaces, 
+                               OBSERVER_DISABLED);
     }
 
     /**
@@ -409,6 +484,34 @@ public class MergedClass {
         }
     }
     
+    public static Constructor<?> getConstructor2(ClassInjector injector,
+                                                 ClassEntry[] classEntries,
+                                                 int observerMode)
+        throws IllegalArgumentException
+    {
+        return getConstructor2(injector, classEntries, null, observerMode);
+    }
+    
+    public static Constructor<?> getConstructor2(ClassInjector injector,
+                                                 ClassEntry[] classEntries,
+                                                 Class<?>[] interfaces,
+                                                 int observerMode)
+        throws IllegalArgumentException
+    {
+        Class<?> clazz = getMergedClass(injector, classEntries, interfaces, 
+                                        observerMode);
+
+        try {
+            if ((observerMode & OBSERVER_ENABLED) != 0)
+                return clazz.getConstructor(new Class[]{InstanceFactory.class, InvocationEventObserver.class});
+            else
+                return clazz.getConstructor(new Class[]{InstanceFactory.class});
+        }
+        catch (NoSuchMethodException e) {
+            throw new InternalError(e.toString());
+        }
+    }
+    
     /**
      * Just create the bytecode for the merged class, but don't load it. Since
      * no ClassInjector is provided to resolve name conflicts, the class name
@@ -443,14 +546,23 @@ public class MergedClass {
     public static ClassFile buildClassFile(String className,
                                            Class<?>[] classes, 
                                            String[] prefixes) {
-        return buildClassFile(className, classes, prefixes, null, OBSERVER_DISABLED);
+        return buildClassFile(className, classes, prefixes, null, 
+                              OBSERVER_DISABLED);
     }
 
     public static ClassFile buildClassFile(String className,
                                            Class<?>[] classes, 
                                            String[] prefixes,
                                            Class<?>[] interfaces) {
-        return buildClassFile(className, classes, prefixes, interfaces, OBSERVER_DISABLED);
+        return buildClassFile(className, classes, prefixes, interfaces,
+                              OBSERVER_DISABLED);
+    }
+    
+    public static ClassFile buildClassFile(String className,
+                                           ClassEntry[] classEntries,
+                                           Class<?>[] interfaces) {
+        return buildClassFile(className, classEntries, interfaces, 
+                              OBSERVER_DISABLED);
     }
 
     /**
@@ -494,16 +606,18 @@ public class MergedClass {
                 classEntries[i] = new ClassEntry(classes[i], prefix);
             }
         }
-        return buildClassFile(null, className, classEntries, interfaces, observerMode);
+        return buildClassFile(className, classEntries, interfaces, 
+                              observerMode);
     }
     
-    private static Class<?> getMergedClass(ClassInjector injector,
-                                           Class<?>[] classes,
-                                           String[] prefixes,
+    public static ClassFile buildClassFile(String className,
+                                           ClassEntry[] classEntries,
+                                           Class<?>[] interfaces,
                                            int observerMode)
         throws IllegalArgumentException
     {
-        return getMergedClass(injector, classes, prefixes, null, observerMode);
+        return buildClassFile(null, className, classEntries, interfaces, 
+                              observerMode);
     }
 
     private static Class<?> getMergedClass(ClassInjector injector,
@@ -515,16 +629,6 @@ public class MergedClass {
     {
         ClassEntry[] classEntries = new ClassEntry[classes.length];
         for (int i=0; i<classes.length; i++) {
-            // Load the classes from the ClassInjector, just like they will be
-            // when the generated class is resolved.
-            try {
-                classes[i] = injector.loadClass(classes[i].getName());
-            }
-            catch (ClassNotFoundException e) {
-                throw new IllegalArgumentException
-                    ("Unable to load class from injector: " + classes[i]);
-            }
-
             if (prefixes == null || i >= prefixes.length) {
                 classEntries[i] = new ClassEntry(classes[i]);
             }
@@ -629,7 +733,8 @@ public class MergedClass {
             ClassEntry classEntry = classEntries[i];
             mainElements[i] = new MultiKey(new Object[] {
                 classEntry.getClazz().getName(),
-                classEntry.getMethodPrefix()
+                classEntry.getMethodPrefix(),
+                Boolean.valueOf(classEntry.isOverride())
             });
         }
         return new MultiKey(mainElements);
@@ -657,12 +762,23 @@ public class MergedClass {
         for (int i=0; i<classEntries.length; i++) {
             ClassEntry classEntry = classEntries[i];
             Class<?> clazz = classEntry.getClazz();
-
+            
             if (clazz.isPrimitive()) {
                 throw new IllegalArgumentException
                     ("Merged classes cannot be primitive: " + clazz);
             }
 
+            // Load the classes from the ClassInjector, just like they will be
+            // when the generated class is resolved.
+            try {
+                clazz = injector.loadClass(clazz.getName());
+                classEntry.setClazz(clazz);
+            }
+            catch (ClassNotFoundException e) {
+                throw new IllegalArgumentException
+                    ("Unable to load class from injector: " + clazz);
+            }
+            
             if (!classSet.add(classEntry)) {
                 throw new IllegalArgumentException
                     ("Class is specified more than once: " + clazz);
@@ -709,8 +825,8 @@ public class MergedClass {
                     continue;
                 }
 
-                MethodEntry methodEntry = 
-                    new MethodEntry(clazz, i, method, name);
+                MethodEntry methodEntry = new MethodEntry(
+                    clazz, i, method, name, classEntry.isOverride());
                 
                 boolean valid = addMethods
                 (
@@ -1010,7 +1126,7 @@ public class MergedClass {
         // ignore if method is conflicting with other similar methods
         // conflicting methods are ones that have different return types
         // with the same method name and parameter types
-        if (conflictingMethods.contains(methodEntry)) { return true; }
+        //if (conflictingMethods.contains(methodEntry)) { return true; }
         
         // check if method was previously discovered with similar signature
         SortedSet<MethodEntry> existing = methodMap.get(methodEntry);
@@ -1025,20 +1141,64 @@ public class MergedClass {
             return true;
         }
         
-        // otherwise, check for compatibility
+        // otherwise, check for compatibility or for methods marked as default
+        // meaning they will always be registered even if a conflict arises
+        
         // if valid, add to the list
         // if not, mark as conflict and update conflicts
         boolean conflict = false;
+        boolean hasOverride = false;
         for (MethodEntry next : existing) {
-            if (next.returnTypeDiffers(methodEntry)) {
+            if (!hasOverride && next.isOverride()) { 
+                hasOverride = true; 
+            }
+            
+            if (!conflict && next.returnTypeDiffers(methodEntry)) {
                 conflict = true;
-                conflictingMethods.add(methodEntry);
-                nonConflictingClasses.remove(classEntry);
+            }
+        }
+
+        // handle conflicts to check for default cases
+        if (conflict) {
+            // class conflicts, so ensure it is removed from non-conflicts
+            nonConflictingClasses.remove(classEntry);
+            
+            // if current method is marked as default, then ensure no other
+            // similar method is marked as default.  If none are, then clear
+            // the existing methods, ensure it is no longer marked conflicting,
+            // and add as the only existing method.  If another method is 
+            // already default then a conflict has arisen w/ two incompatible 
+            // methods both being default.  In that case keep the flag set as
+            // conflict
+            if (methodEntry.isOverride()) {
+                if (!hasOverride) {
+                    conflict = false;
+                    existing.clear();
+                    existing.add(methodEntry);
+                    conflictingMethods.remove(methodEntry);
+                }
+                else {
+                    conflictingMethods.add(methodEntry);
+                }
+            }
+            
+            // otherwise, if the current method is not default, then check if
+            // another method already was.  If a method already was defaulted,
+            // then keep the existing methods and just ignore this method
+            // leaving the existing methods as untouched.  If no other methods 
+            // were marked default, then we have a conflict.
+            else {
+                if (hasOverride) {
+                    conflict = true;
+                }
+                else {
+                    conflictingMethods.add(methodEntry);
+                }
             }
         }
         
-        // add to set
-        if (!conflict) {
+        // otherwise, if no conflict, add to set
+        else {
             existing.add(methodEntry);
         }
 
@@ -1076,7 +1236,8 @@ public class MergedClass {
             
             // add any remaining methods (superclasses) as bridged methods
             while (it.hasNext()) {
-                addBridgeMethod(cf, firstEntry, it.next());
+                MethodEntry next = it.next();
+                addBridgeMethod(cf, firstEntry, next);
             }
         }
     }
@@ -1420,25 +1581,39 @@ public class MergedClass {
         public long currentTime();
     }
 
-    private static class ClassEntry {
-        private final Class<?> mClazz;
+    public static class ClassEntry {
+        private Class<?> mClazz;
         private final String mPrefix;
+        private final boolean mIsOverride;
 
         public ClassEntry(Class<?> clazz) {
-            this(clazz, null);
+            this(clazz, null, false);
         }
 
         public ClassEntry(Class<?> clazz, String prefix) {
-            mClazz = clazz;
-            mPrefix = prefix;
+            this(clazz, prefix, false);
         }
 
+        public ClassEntry(Class<?> clazz, String prefix, boolean isOverride) {
+            mClazz = clazz;
+            mPrefix = prefix;
+            mIsOverride = isOverride;
+        }
+        
         public Class<?> getClazz() {
             return mClazz;
+        }
+        
+        private void setClazz(Class<?> clazz) {
+            mClazz = clazz;
         }
 
         public String getMethodPrefix() {
             return mPrefix;
+        }
+        
+        public boolean isOverride() {
+            return mIsOverride;
         }
 
         public int hashCode() {
@@ -1470,6 +1645,7 @@ public class MergedClass {
         private final int mIndex;
         private final Method mMethod;
         private final String mName;
+        private final boolean mIsOverride;
         private Class<?> mReturn;
         private GenericType mGenericReturn;
         private List<Class<?>> mParams;
@@ -1477,18 +1653,24 @@ public class MergedClass {
         private int mHashCode;
 
         public MethodEntry(Class<?> type, Method method) {
-            this(type, -1, method, method.getName());
+            this(type, -1, method, method.getName(), false);
         }
         
         public MethodEntry(Class<?> type, Method method, String name) {
-            this(type, -1, method, name);
+            this(type, -1, method, name, false);
         }
         
         public MethodEntry(Class<?> type, int index, Method method, 
                            String name) {
+            this(type, index, method, name, false);
+        }
+        
+        public MethodEntry(Class<?> type, int index, Method method, 
+                           String name, boolean isOverride) {
             mMethod = method;
             mName = name;
             mIndex = index;
+            mIsOverride = isOverride;
             mGenericReturn = new GenericType
             (
                 new GenericType(type), 
@@ -1547,6 +1729,10 @@ public class MergedClass {
             return mIndex;
         }
         
+        public boolean isOverride() {
+            return mIsOverride;
+        }
+        
         public boolean returnTypeDiffers(MethodEntry methodEntry) {
             return !(mReturn.isAssignableFrom(methodEntry.mReturn) ||
                      methodEntry.mReturn.isAssignableFrom(mReturn));
@@ -1593,7 +1779,20 @@ public class MergedClass {
 
         @Override
         public String toString() {
-            return mMethod.toString();
+            StringBuilder buffer = new StringBuilder(128);
+            buffer.append(mReturn.getName()).append(' ')
+                  .append(mName).append('(');
+ 
+            boolean first = true;
+            for (Class<?> paramType : mParams) {
+                if (!first) { buffer.append(", "); }
+                buffer.append(paramType.getName());
+                first = false;
+            }
+            
+            buffer.append(')');
+            return buffer.toString();
+            //return mMethod.toString();
         }
 
         @Override

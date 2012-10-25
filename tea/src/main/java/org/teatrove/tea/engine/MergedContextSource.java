@@ -16,13 +16,14 @@
 
 package org.teatrove.tea.engine;
 
+import java.lang.reflect.Constructor;
+import java.util.ArrayList;
+
 import org.teatrove.tea.runtime.UtilityContext;
 import org.teatrove.trove.util.ClassInjector;
 import org.teatrove.trove.util.DelegateClassLoader;
 import org.teatrove.trove.util.MergedClass;
-
-import java.lang.reflect.Constructor;
-import java.util.ArrayList;
+import org.teatrove.trove.util.MergedClass.ClassEntry;
 
 /**
  * A ContextSource implementation that merges several ContextSources into one.
@@ -40,12 +41,20 @@ public class MergedContextSource implements ContextSource {
 
     // TODO: Why use init? Constructers may make more sense.
 
-    public void init(ClassLoader loader, ContextSource[] contextSources, boolean profilingEnabled)
+    public void init(ClassLoader loader, ContextSource[] contextSources, 
+                     boolean profilingEnabled)
         throws Exception {
 
-        init(loader, contextSources, null, profilingEnabled);
+        init(loader, contextSources, null, null, profilingEnabled);
     }
 
+    public void init(ClassLoader loader, ContextSource[] contextSources, 
+                     String[] prefixes, boolean profilingEnabled)
+        throws Exception {
+
+        init(loader, contextSources, prefixes, null, profilingEnabled);
+    }
+    
     /**
      * Creates a unified context source for all those passed in.  An Exception
      * may be thrown if the call to a source's getContextType() method throws
@@ -53,18 +62,29 @@ public class MergedContextSource implements ContextSource {
      */
     public void init(ClassLoader loader,
                      ContextSource[] contextSources,
-                     String[] prefixes, boolean profilingEnabled) throws Exception {
+                     String[] prefixes, boolean[] overrides,
+                     boolean profilingEnabled) throws Exception {
 
 
         mSources = contextSources;
         int len = contextSources.length;
-        ArrayList<Class<?>> contextList = new ArrayList<Class<?>>(len);
+        ArrayList<ClassEntry> contextList = new ArrayList<ClassEntry>(len);
         ArrayList<ClassLoader> delegateList = new ArrayList<ClassLoader>(len);
 
         for (int j = 0; j < contextSources.length; j++) {
             Class<?> type = contextSources[j].getContextType();
             if (type != null) {
-                contextList.add(type);
+                boolean isOverride = false;
+                if (overrides != null && j < overrides.length) { 
+                    isOverride = overrides[j]; 
+                }
+                
+                String prefix = null;
+                if (prefixes != null && j < prefixes.length) {
+                    prefix = prefixes[j];
+                }
+                
+                contextList.add(new ClassEntry(type, prefix, isOverride));
                 ClassLoader scout = type.getClassLoader();
                 if (scout != null && !delegateList.contains(scout)) {
                     delegateList.add(scout);
@@ -72,7 +92,14 @@ public class MergedContextSource implements ContextSource {
             }
         }
 
-        mContextsInOrder = contextList.toArray(new Class[contextList.size()]);
+        ClassEntry[] classEntries = 
+            contextList.toArray(new ClassEntry[contextList.size()]);
+        
+        mContextsInOrder = new Class[classEntries.length];
+        for (int i = 0; i < classEntries.length; i++) {
+            mContextsInOrder[i] = classEntries[i].getClazz();
+        }
+        
         ClassLoader[] delegateLoaders =
             delegateList.toArray(new ClassLoader[delegateList.size()]);
 
@@ -87,8 +114,7 @@ public class MergedContextSource implements ContextSource {
         // compatibility with old code relying on it.
         Class<?>[] interfaces = { UtilityContext.class };
         mConstr = MergedClass.getConstructor2(mInjector,
-                                              mContextsInOrder,
-                                              prefixes,
+                                              classEntries,
                                               interfaces,
                                               observerMode);
     }

@@ -15,6 +15,8 @@ Change History
 
 4.1.2 to 4.2.0
 ===============================
+- Fix #210 updating type checker error messages
+- Fix #209 adding override support for context sources and merged classes
 - Fix #164 adding instrumentation.enabled flag to enable/disable instrumentation
 - Add flushBuffer and getTemplateCompilationStatus for #186
 - Fix #66 and #174 adding startup screen

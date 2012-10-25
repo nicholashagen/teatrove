@@ -26,18 +26,29 @@ import org.teatrove.tea.engine.DynamicContextSource;
 public class ApplicationContextSource implements DynamicContextSource {
 
     private Application mApp;
+    private boolean mIsOverride;
     private boolean mContextTypeMayChange;
 
     public ApplicationContextSource(Application app) {
+        this(app, false);
+    }
+    
+    public ApplicationContextSource(Application app, boolean isOverride) {
         mApp = app;
+        mIsOverride = isOverride;
+        
         // storing this saves an instanceof call for every hit.
         mContextTypeMayChange = (app instanceof DynamicContextSource);
     }
 
+    public boolean isOverride() {
+        return mIsOverride;
+    }
+    
     /**
      * @return the Class of the object returned by createContext.
      */
-    public Class getContextType() {
+    public Class<?> getContextType() {
         return mApp.getContextType();
     }
 
@@ -51,7 +62,7 @@ public class ApplicationContextSource implements DynamicContextSource {
         return mApp.createContext(rar.getRequest(), rar.getResponse());
     }
 
-    public Object createContext(Class clazz, Object param) throws Exception {
+    public Object createContext(Class<?> clazz, Object param) throws Exception {
         if (mContextTypeMayChange) {
             return ((DynamicContextSource)mApp).createContext(clazz, param);
         }

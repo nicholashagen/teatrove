@@ -53,7 +53,7 @@ public abstract class AbstractTemplateTest {
             }
         });
     }
-
+    
     public void addCompileListener(CompileListener listener) {
         this.listeners.add(listener);
     }
@@ -64,18 +64,13 @@ public abstract class AbstractTemplateTest {
     }
     
     public void addContext(final String name, final Object context) {
-        contexts.put(name.concat("$"), new ContextSource() {
-
-            @Override
-            public Class<?> getContextType() throws Exception {
-                return context.getClass();
-            }
-
-            @Override
-            public Object createContext(Object param) throws Exception {
-                return context;
-            }
-        });
+        addContext(name, context, false);
+    }
+    
+    public void addContext(final String name, final Object context,
+                           boolean override) {
+        contexts.put(name.concat("$"), 
+                     new CustomContextSource(context, override));
     }
 
     public MergedContextSource getContext() {
@@ -94,14 +89,29 @@ public abstract class AbstractTemplateTest {
     }
 
     protected MergedContextSource createContext() throws Exception {
+        int i = 0;
+        ContextSource[] sources = new ContextSource[contexts.size()];
+        String[] prefixes = new String[contexts.size()];
+        boolean[] overrides = new boolean[contexts.size()];
+        for (Map.Entry<String, ContextSource> entry : contexts.entrySet()) {
+            ContextSource source = entry.getValue();
+            sources[i] = source;
+            prefixes[i] = entry.getKey();
+            
+            overrides[i] = false;
+            if (source instanceof CustomContextSource) {
+                overrides[i] = ((CustomContextSource) source).isOverride();
+            }
+            
+            i++;
+        }
+        
         // setup merged context
         MergedContextSource source = new MergedContextSource();
         source.init
         (
             Thread.currentThread().getContextClassLoader(),
-            contexts.values().toArray(new ContextSource[contexts.size()]),
-            contexts.keySet().toArray(new String[contexts.size()]),
-            false
+            sources, prefixes, overrides, false
         );
 
         return source;
@@ -366,6 +376,29 @@ public abstract class AbstractTemplateTest {
                 fail("exceeded number of expected warnings");
             }
         }
+    }
+    
+    protected static class CustomContextSource implements ContextSource {
+        private Object context;
+        private boolean override;
         
+        public CustomContextSource(Object context, boolean override) {
+            this.context = context;
+            this.override = override;
+        }
+        
+        public boolean isOverride() {
+            return this.override;
+        }
+        
+        @Override
+        public Class<?> getContextType() throws Exception {
+            return context.getClass();
+        }
+
+        @Override
+        public Object createContext(Object param) throws Exception {
+            return context;
+        }
     }
 }

@@ -10,6 +10,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.util.Arrays;
 import java.util.List;
 
 import org.junit.Test;
@@ -192,5 +193,114 @@ public class MergedClassTest {
         assertFalse("invalid equals(null)", instance.equals(null));
         assertTrue("invalid equality to itself", instance.equals(instance));
         assertFalse("expected non-empty string", instance.toString().isEmpty());
+    }
+    
+    public static class CMS1 {
+        public Number getTest() { return null; }
+    }
+    
+    public static class CMS2 {
+        public Integer getTest() { return null; }
+    }
+    
+    public static class CMS3 {
+        public String getTest() { return null; }
+    }
+    
+    @Test
+    public void testDefaults1() throws Exception {
+        
+        // generate ctor
+        Constructor<?> ctor = MergedClass.getConstructor
+        (
+            ClassInjector.getInstance(), 
+            new MergedClass.ClassEntry[] { 
+                new MergedClass.ClassEntry(CMS1.class, "CMS1$", false), 
+                new MergedClass.ClassEntry(CMS2.class, "CMS2$", false),
+                new MergedClass.ClassEntry(CMS3.class, "CMS3$", true) 
+            }
+        );
+
+        // validate ctor
+        assertNotNull("invalid ctor", ctor);
+        
+        // validate get test returns valid value
+        Object instance = ctor.newInstance(new CMS1(), new CMS2(), new CMS3());
+        Method method = instance.getClass().getMethod("getTest");
+        assertEquals("expected getTest to return String", 
+                     String.class, method.getReturnType());
+        
+        validateDefaults(instance);
+    }
+    
+    @Test
+    public void testDefaults2() throws Exception {
+        
+        // generate ctor
+        Constructor<?> ctor = MergedClass.getConstructor
+        (
+            ClassInjector.getInstance(), 
+            new MergedClass.ClassEntry[] { 
+                new MergedClass.ClassEntry(CMS1.class, "CMS1$", true), 
+                new MergedClass.ClassEntry(CMS2.class, "CMS2$", false),
+                new MergedClass.ClassEntry(CMS3.class, "CMS3$", false) 
+            }
+        );
+
+        // validate ctor
+        assertNotNull("invalid ctor", ctor);
+        
+        // validate get test returns valid value
+        Object instance = ctor.newInstance(new CMS1(), new CMS2(), new CMS3());
+        Method method = instance.getClass().getMethod("getTest");
+        assertEquals("expected getTest to return Integer", 
+                     Integer.class, method.getReturnType());
+        
+        validateDefaults(instance);
+    }
+    
+    @Test
+    public void testDefaults3() throws Exception {
+        
+        // generate ctor
+        Constructor<?> ctor = MergedClass.getConstructor
+        (
+            ClassInjector.getInstance(), 
+            new MergedClass.ClassEntry[] { 
+                new MergedClass.ClassEntry(CMS1.class, "CMS1$", true), 
+                new MergedClass.ClassEntry(CMS2.class, "CMS2$", false),
+                new MergedClass.ClassEntry(CMS3.class, "CMS3$", true) 
+            }
+        );
+
+        // validate ctor
+        assertNotNull("invalid ctor", ctor);
+        
+        // validate get test returns valid value
+        Object instance = ctor.newInstance(new CMS1(), new CMS2(), new CMS3());
+        try {
+            instance.getClass().getMethod("getTest");
+            fail("expected getTest method to be invalid as it conflicts");
+        }
+        catch (NoSuchMethodException nsme) { /* valid */ }
+        
+        validateDefaults(instance);
+    }
+    
+    protected void validateDefaults(Object instance) throws Exception {
+        // validate CMS1.getTest
+        Method method1 = instance.getClass().getMethod("CMS1$getTest");
+        assertEquals("expected Number CMS1.getTest", 
+                     Number.class, method1.getReturnType());
+
+        // validate CMS2.getTest
+        Method method2 = instance.getClass().getMethod("CMS2$getTest");
+        assertEquals("expected Integer CMS2.getTest", 
+                     Integer.class, method2.getReturnType());
+        
+        // validate CMS3.getTest
+        Method method3 = instance.getClass().getMethod("CMS3$getTest");
+        assertEquals("expected String CMS3.getTest", 
+                     String.class, method3.getReturnType());
     }
 }

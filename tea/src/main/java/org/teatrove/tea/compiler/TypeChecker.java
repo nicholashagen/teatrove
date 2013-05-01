@@ -464,6 +464,18 @@ public class TypeChecker {
                         clazz = Float.TYPE;
                     else if (checkName.equals("byte"))
                         clazz = Byte.TYPE;
+                    // TODO: note that this is a temporary fix to an issue that
+                    // was previously fixed in Tea...however, due to auto-imports,
+                    // the assumption that String will be in java.lang.String and
+                    // Map/List will be in java.util is an incorrect assumption.
+                    // As such, we will need a better automated caching behavior
+                    // to cache classes within auto-imports
+                    else if (checkName.equals("String"))
+                        clazz = String.class;
+                    else if (checkName.equals("Map"))
+                        clazz = java.util.Map.class;
+                    else if (checkName.equals("List"))
+                        clazz = java.util.List.class;
                     else
                         clazz = loadClass(checkName);
                     checkAccess(clazz, node);

@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.regex.Pattern;
 
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletContext;
@@ -137,6 +138,10 @@ public class TeaServlet extends HttpServlet {
     private String mParameterSeparator;
     private String mValueSeparator;
     private boolean mUseSpiderableRequest;
+    private String mAdminKey;
+    private String mAdminValue;
+    private Pattern mStartupPath;
+    private String mStartupFile;
     
     private TeaServletRequestStats mTeaServletRequestStats;
 
@@ -270,6 +275,16 @@ public class TeaServlet extends HttpServlet {
                 (!"&".equals(mParameterSeparator)) ||
                 (!"=".equals(mValueSeparator));
     
+            mAdminKey = mProperties.getString("admin.key");
+            mAdminValue = mProperties.getString("admin.value");
+            
+            String startupPath = mProperties.getString("startup.path");
+            if (startupPath != null) {
+            	mStartupPath = Pattern.compile(startupPath);
+            }
+            
+            mStartupFile = mProperties.getString("startup.file");
+                    
             config.getServletContext().log("TeaServlet complete...");
         }
     }
@@ -389,50 +404,47 @@ public class TeaServlet extends HttpServlet {
         throws IOException {
         
         String path = request.getPathInfo();
+        if ("/system/status.json".equals(path)) {
+        	if (AdminApplication.adminCheck(mAdminKey, mAdminValue, 
+        			request, response)) {
+        	
+        		printStatus(response);
+        		return true;
+        	}
+        }
+          
+        // once we have initialized, no need to further process
+        if (isRunning()) { return false; }
+        
+        // verify our path matches the expected path
+        // and verify the startup file that was provided
+        if (mStartupPath != null && mStartupFile != null &&
+        		mStartupPath.matcher(path).matches()) {
             
-        // check password
-        String adminKey = mProperties.getString("admin.key");
-        String adminValue = mProperties.getString("admin.value");
-        if (AdminApplication.adminCheck(adminKey, adminValue, 
-                                        request, response)) {
+        	// check password
+        	if (AdminApplication.adminCheck(mAdminKey, mAdminValue, 
+        			request, response)) {
+            
+                InputStream input = 
+                    TeaServlet.class.getResourceAsStream(mStartupFile);
+                
+                // copy the data to the response if valid
+                if (input != null) {
+                    int read = 0;
+                    byte[] data = new byte[512];
+            
+                    input = new BufferedInputStream(input);
+                    ServletOutputStream output = 
+                        response.getOutputStream();
 
-            // check if status request
-            if ("/system/status.json".equals(path)) {
-                printStatus(response);
-                return true;
-            }
-            
-            // once we have initialized, no need to further process
-            if (isRunning()) { return false; }
-            
-            // verify our path matches the expected path
-            String pattern = mProperties.getString("startup.path");
-            if (pattern != null && path.matches(pattern)) {
-                    
-                // verify the startup file that was provided
-                String resource = mProperties.getString("startup.file");
-                if (resource != null) {
-                    InputStream input = 
-                        TeaServlet.class.getResourceAsStream(resource);
-                    
-                    // copy the data to the response if valid
-                    if (input != null) {
-                        int read = 0;
-                        byte[] data = new byte[512];
-                
-                        input = new BufferedInputStream(input);
-                        ServletOutputStream output = 
-                            response.getOutputStream();
-
-                        while ((read = input.read(data)) >= 0) {
-                            output.write(data, 0, read);
-                        }
-                
-                        input.close();
-                
-                        response.flushBuffer();
-                        return true;
+                    while ((read = input.read(data)) >= 0) {
+                        output.write(data, 0, read);
                     }
+            
+                    input.close();
+            
+                    response.flushBuffer();
+                    return true;
                 }
             }
         }

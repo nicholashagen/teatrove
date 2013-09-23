@@ -1,0 +1,106 @@
+<% template getRelativeTimeText (Long current, Long value, Boolean useRelative, Boolean showTimeZone)
+
+    if ( current == null ) {
+        current = currentDate().time;
+    }
+    if ( useRelative == null ) {
+        useRelative = false;
+    }
+    if ( showTimeZone == null ) {
+        showTimeZone = false;
+    }
+
+    roundDown = true;
+
+    text = '';
+
+    if ( current != null and value != null ) {
+        difference = current - value;
+
+        SECOND = org.teatrove.teaadmin.Constants.SECOND;
+        MINUTE = org.teatrove.teaadmin.Constants.MINUTE;
+        HOUR = org.teatrove.teaadmin.Constants.HOUR;
+        DAY = org.teatrove.teaadmin.Constants.DAY;
+        WEEK = org.teatrove.teaadmin.Constants.WEEK;
+        MONTH = org.teatrove.teaadmin.Constants.MONTH;
+        YEAR = org.teatrove.teaadmin.Constants.YEAR;
+
+        // If less than a minute...
+        if ( difference < MINUTE ) {
+            unit = 'second';
+            format = "HH:mm:ss";
+            // Round to nearest second.
+            time = (difference + SECOND) / SECOND;
+        }
+        // If less than 1 hour...
+        else if ( difference < HOUR ) {
+            unit = 'minute';
+            format = "HH:mm:ss";
+            // Round to nearest minute.
+            time = (difference + MINUTE) / MINUTE;
+        }
+        // If less than 1 day or same day...
+        else if ( difference < (2 * DAY) ) {
+            unit = 'hour';
+            format = "HH:mm:ss";
+            // Round to nearest hour.
+            time = (difference + HOUR) / (HOUR);
+        }
+        // If same week...
+        else if ( difference < WEEK ) {
+            unit = 'day';
+            if ( useRelative ) {
+                format = "EEE HH:mm:ss";
+            } else {
+                format = "MM.dd HH:mm:ss";
+            }
+            // Round to nearest day.
+            time = (difference + DAY) / DAY;
+        }
+        // If less than 1 month...
+        else if ( difference < MONTH ) {
+            unit = 'day';
+            format = "MM.dd HH:mm:ss";
+            // Round to nearest day.
+            time = (difference + DAY) / DAY;
+        }
+        // If less than 1 year...
+        else if ( difference < YEAR ) {
+            unit = 'month';
+            format = "MM.dd HH:mm:ss";
+            // Round to nearest month.
+            time = (difference + MONTH) / MONTH;
+        }
+        else {
+            unit = 'month';
+            format = "yyyy.MM.dd HH:mm:ss";
+            // Round to nearest month.
+            time = (difference + MONTH) / MONTH;
+        }
+
+        // round down
+        if ( roundDown ) {
+            time = time - 1;
+        }
+        
+        if ( useRelative ) {
+            //text = text & '~' & time & '&nbsp;' & unit;
+            text = text & time & '&nbsp;' & unit;
+
+            if ( time != 1 ) {
+                text = text & 's';
+            }
+        } else {
+            if ( showTimeZone ) {
+                format = format & ' zzz';
+            }
+            dateFormat(format);
+            text = createDate(value)&"";
+            dateFormat(null);
+        }
+    }
+
+    // return time text
+    text
+    
+%>

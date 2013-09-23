@@ -1,0 +1,36 @@
+<% template printClusterLink(String name)
+
+// get current request
+request = getRequest()
+admin = getTeaServletAdmin()
+
+// lookup admin params
+key = null
+value = null
+foreach (param in admin.initParameters) {
+    if (findFirst(param.name, "admin.key") >= 0) {
+        key = param.value
+    }
+    else if (findFirst(param.name, "admin.value") >= 0) {
+        value = param.value
+    }
+
+    if (key != null and value != null) {
+        break;
+    }
+}
+
+// setup parameters
+scheme = request.scheme ?: 'http'
+server = name
+port = request.serverPort
+uri = request.requestURI
+queryString = request.queryString ?: ''
+if (key and value) {
+    if (queryString) { queryString = queryString & '&' }
+    queryString = queryString & key & '=' & encodeParameter(value)
+}
+
+%>
+
+<a href="<% scheme %>://<% name %>:<% port %><% uri %>?<% queryString %>"><% name %></a>

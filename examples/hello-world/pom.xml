@@ -1,0 +1,80 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+  
+    <groupId>org.teatrove.examples</groupId>
+    <artifactId>hello-world</artifactId>
+
+    <parent>
+        <groupId>org.teatrove</groupId>
+        <artifactId>examples</artifactId>
+        <version>4.2.0-espn-19-SNAPSHOT</version>
+    </parent>
+
+    <name>Hello World TeaTrove Example</name>
+    <description>
+        Hello World example of using teatrove as a WAR project.
+    </description>
+
+    <packaging>war</packaging>
+  
+    <dependencies>
+
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>servlet-api</artifactId>
+            <version>2.5</version>
+        </dependency>
+    
+        <dependency>
+            <groupId>org.teatrove</groupId>
+            <artifactId>teaservlet</artifactId>
+        </dependency> 
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- BEGIN ESPN UPDATE: add repackaging plugin -->
+            <plugin>
+                <groupId>com.espn.maven.plugins</groupId>
+                <artifactId>teatrove-legacy-repackager</artifactId>
+                <version>${repackaging.plugin.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage-sources</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <outputDirectory>${project.build.directory}/repackaged-sources</outputDirectory>
+                    <additionalRoots>
+                        <param>src/main/webapp</param>
+                    </additionalRoots>
+                </configuration>                
+            </plugin>
+            <!-- END ESPN UPDATE -->
+            <!-- BEGIN ESPN UPDATE: add war plugin configuration to use repackaged sources -->
+            <plugin>
+                <artifactId>maven-war-plugin</artifactId>
+                <groupId>org.apache.maven.plugins</groupId>
+                <version>2.1.1</version>
+                <configuration>
+                    <warSourceDirectory>${project.build.directory}/repackaged-sources/src/main/webapp</warSourceDirectory>
+                </configuration>
+            </plugin>
+            <!-- END ESPN UPDATE -->
+            <!-- BEGIN ESPN UPDATE: add jetty plugin to use repackaged source directory -->
+            <plugin>
+                <groupId>org.mortbay.jetty</groupId>
+                <artifactId>maven-jetty-plugin</artifactId>
+                <configuration>
+                    <webAppSourceDirectory>${project.build.directory}/repackaged-sources/src/main/webapp</webAppSourceDirectory> 
+                </configuration>
+            </plugin>
+            <!-- END ESPN UPDATE -->            
+        </plugins>
+    </build>
+    
+</project>

@@ -1,0 +1,51 @@
+<teaservlet>
+
+    <!-- 
+    define the default template when just the directory is provided 
+    -->
+    
+    <template>
+        <default>index</default>
+        <classes>/teaClasses</classes>
+    </template>
+
+    <!-- 
+    define startup behaviour
+    -->
+    
+    <startup>
+        <file>/org/teatrove/teaservlet/startup.html</file>
+        <path>^/system/.*$</path>
+        <background>false</background>
+        <codes>
+            <initializing>510</initializing>
+            <error>511</error>
+        </codes>
+    </startup>
+    
+    <!-- 
+    define the default mime types
+    -->
+    
+    <assets>
+        <mimeTypes>
+            <png>image/png</png>
+            <gif>image/gif</gif>
+            <jpg>image/jpeg</jpg>
+            <js>text/javascript</js>
+            <css>text/css</css>
+        </mimeTypes>
+    </assets>
+    
+    <!-- 
+    define the logging states for the TeaServlet 
+    -->
+    
+    <log>
+        <debug>false</debug>
+        <info>true</info>
+        <warn>true</warn>
+        <error>true</error>
+    </log>
+
+</teaservlet>

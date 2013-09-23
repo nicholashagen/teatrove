@@ -1,0 +1,174 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+  
+  <groupId>org.teatrove</groupId>
+  <artifactId>trove</artifactId>
+
+  <parent>
+    <groupId>org.teatrove</groupId>
+    <artifactId>teatrove</artifactId>
+    <version>4.2.0-espn-19-SNAPSHOT</version>
+  </parent>
+
+  <packaging>jar</packaging>
+  
+  <name>Trove</name>
+  
+  <description>Utility methods in use through-out Tea development.</description>
+  
+  <developers>
+  
+    <developer>
+      <id>boneill</id>
+      <name>Brian O'Niell</name>
+      <email>bronee@gmail.com</email>
+      <roles>
+        <role>Lead Developer</role>
+      </roles>
+      <timezone>-8</timezone>
+    </developer>
+    
+    <developer>
+      <id>reece.wilton</id>
+      <name>Reece Wilton</name>
+      <email />
+      <roles>
+        <role>Developer</role>
+      </roles>
+      <timezone>-8</timezone>
+    </developer>
+    
+    <developer>
+      <id>jonathan.colwell</id>
+      <name>Jonathan Colwell</name>
+      <email />
+      <roles>
+        <role>Developer</role>
+      </roles>
+      <timezone>-8</timezone>
+    </developer>
+    
+    <developer>
+      <id>scott.jappinen</id>
+      <name>Scott Jappinen</name>
+      <email>jappinen@gmail.com</email>
+      <roles>
+        <role>Developer</role>
+      </roles>
+      <timezone>-5</timezone>
+    </developer>
+    
+    <developer>
+      <id>guy.molinari</id>
+      <name>Guy Molinari</name>
+      <email />
+      <roles>
+        <role>Developer</role>
+      </roles>
+      <timezone>-8</timezone>
+    </developer>
+    
+    <developer>
+      <id>eearle</id>
+      <name>Erik Earle</name>
+      <email>eearle@dig.com</email>
+      <organization>teatrove.org</organization>
+      <roles>
+        <role>Developer</role>
+      </roles>
+      <timezone>-8</timezone>
+    </developer>
+
+  </developers>
+  
+  <dependencies>
+
+    <dependency>
+      <groupId>org.jdom</groupId>
+      <artifactId>jdom</artifactId>
+      <version>1.1</version>
+    </dependency> 
+
+    <dependency>
+      <groupId>commons-lang</groupId>
+      <artifactId>commons-lang</artifactId>
+      <version>2.3</version>
+    </dependency>
+    
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>4.8.2</version>
+    </dependency>
+
+  </dependencies>
+  
+  <build>
+    <plugins>
+
+      <!-- BEGIN ESPN UPDATE: add repackaging plugin -->
+      <plugin>
+        <groupId>com.espn.maven.plugins</groupId>
+        <artifactId>teatrove-legacy-repackager</artifactId>
+        <version>${repackaging.plugin.version}</version>
+        <executions>
+            <execution>
+                <goals>
+                    <goal>repackage-sources</goal>
+                </goals>
+            </execution>
+        </executions>
+        <configuration>
+            <outputDirectory>${project.build.directory}/repackaged-sources</outputDirectory>
+        </configuration>  
+      </plugin>
+      <!-- END ESPN UPDATE -->
+
+      <plugin>
+        <groupId>org.teatrove</groupId>
+        <artifactId>package-info-maven-plugin</artifactId>
+        <version>${project.version}</version>
+        <configuration>
+           <!-- BEGIN ESPN UPDATE: rename from org.teatrove to com.go -->
+           <packageRoot>com.go.trove</packageRoot>
+           <!-- END ESPN UPDATE -->
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>create-package-infos</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      
+    </plugins>
+  </build>
+
+  <reporting>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>cobertura-maven-plugin</artifactId>
+        <version>2.4</version>
+      </plugin>
+      
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>2.7</version>
+        <configuration>
+          <instrumentation>
+            <excludes>
+              <exclude>com/**/*BeanInfo.class</exclude>
+              <exclude>com/**/PackageInfo.class</exclude>
+            </excludes>
+          </instrumentation>
+          <maxmemory>512m</maxmemory>
+        </configuration>
+      </plugin>
+    </plugins>
+  </reporting>
+
+</project>

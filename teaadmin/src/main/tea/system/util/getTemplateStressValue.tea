@@ -1,0 +1,22 @@
+<% template getTemplateStressValue (org.teatrove.teaservlet.stats.TemplateStats stats)
+
+    stressValue = 0.0;
+
+    cdt = currentDateTime();
+    // 20 minutes
+    //aggregateIntervalForRawData = getAggregateIntervalForRawData(stats, cdt.millis-1200000, cdt.millis);
+    // 1 minute
+    aggregateIntervalForRawData = stats.latestAggregateIntervalForRawData
+
+    if ( stats != null and aggregateIntervalForRawData != null ) {
+
+        durationStressMeasure = aggregateIntervalForRawData.durationStressMeasure;
+        if ( durationStressMeasure + 0.0 == durationStressMeasure ) {
+            stressValue = durationStressMeasure;
+        }
+    }
+
+    // return stress value
+    stressValue
+
+%>

@@ -1,0 +1,101 @@
+<% template functions (Map config)
+
+    admin = getTeaServletAdmin();
+    request = getRequest();
+
+    call system.util.handleRequest(request);
+    
+    applications = admin.applications;
+
+    path = request.requestURI;
+    root = "";
+    extension = "";
+
+    pathTokens = tokenize(path, '/');
+    if ( pathTokens.length > 0 ) {
+        root = pathTokens[0];
+    }
+
+    found = false    
+    name = request.parameters['name']
+    if (name != null) {
+        foreach (function in admin.functions) {
+            if (function.name == name) {
+                found = true
+                query = replace(request.queryString, 'name=' & name, '')
+                contextType = function.descriptor.method.declaringClass.name
+                param = 'format/getContextFunctionDetails?context=' & contextType & '&function=' & function.name
+                sendRedirect(path & '?' & query & '#' & encodeParameter(param))
+            }
+        }
+    }
+    
+    if (not found) {
+
+%>
+		<article>
+			<section>
+				<div class="controls" style="width: 100%;">
+					<div class="controls-wrapper left-float">
+					    <div><input id="tree-search-text" type="search" placeholder="Search" /></div>
+                        <div id="showHideTypes" class="button">Hide Types</div>
+                        <div id="expandCollapseTree" class="button">Expand All</div>
+					</div>
+					
+					<div class="controls-wrapper right-float">
+                        <div id="buttonset-nav" class="buttonset">
+                            <a href="#" id="nav_back">&lt;</a>
+                            <a href="#" id="nav_fwd">&gt;</a>
+                        </div>
+                    </div>
+				</div>
+				<br class="clear " />
+                <div id="tree-container" expandFirst="false">
+                <%
+                    if ( admin.functions != null ) {
+                        '<ul>\n'
+                        foreach ( c in 0..admin.functions.length-1 ) {
+                            contextFunction = admin.functions[c];
+
+                            idStringFunc = 'tree_' & contextFunction.name & '_' & c;
+                            '<li id="' idStringFunc '"  rel="function" details="format/getContextFunctionDetails?context=' contextFunction.descriptor.method.declaringClass.name '&function=' contextFunction.name '">\n';
+                                '<a href="#" class="' (contextFunction.deprecated ? 'deprecated' : '') '">'
+                                    contextFunction.descriptor.name ' : ' call system.util.printClassLink(contextFunction.descriptor.method.genericReturnType, false);
+                                '</a>\n';
+                                types = contextFunction.descriptor.method.genericParameterTypes;
+                                ptypes = contextFunction.descriptor.method.parameterTypes;
+                                descriptors = contextFunction.descriptor.parameterDescriptors;
+                                if ( types ) {
+                                    '<ul>\n'
+                                    foreach ( p in 0..types.length-1 ) {
+                                        parameterType = types[p];
+                                        parameterDescriptor = descriptors?[p];
+                                        parameterPath = ptypes[p].name;
+
+                                        '<li id="' idStringFunc '_' (parameterDescriptor?.name ?: p) '" rel="parameter" details="format/getBeanDetails?bean=' parameterPath '">\n';
+                                            '<a href="#">'
+                                                '<span class="italic">'
+                                                    call system.util.printClassLink(parameterType, false);
+                                                '</span>'
+                                                parameterDescriptor?.name ?: '';
+                                            '</a>\n';
+                                        '</li>\n'
+                                    }
+                                    '</ul>\n'
+                                }
+                            '</li>\n'
+                        }
+                        '</ul>\n'
+                    }
+                %>
+                </div>
+                <div id="details-container">
+                    <div id="details-content"></div>
+                </div>
+                <div class="clear"></div>
+			</section>
+		</article>
+		
+<%
+    }
+%>

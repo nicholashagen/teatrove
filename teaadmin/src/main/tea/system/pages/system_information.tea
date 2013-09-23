@@ -1,0 +1,117 @@
+<% template system_information (Map config)
+
+    request = getRequest();
+
+    admin = getTeaServletAdmin();
+    pathPrefix = call system.util.getPathPrefix();
+    call system.util.handleRequest(request);
+
+    memoryMXBean = getMemoryMXBean();
+
+    tab = request.parameters['tab'] ?: 'overview'
+    refresh = convertStringToInteger(request.parameters['refresh'] ?: '3')
+%>
+
+<article>
+    <section id="system-info-container">
+        <div class="controls">
+            <div class="controls-wrapper">
+                <div id="label-refresh" role="label">Auto Refresh:</div>
+                <div id="buttonset-refresh" class="buttonset">
+                    <input type="radio" id="refresh_off" name="refresh" value="0" <% refresh == 0 ? 'checked="checked"' : '' %> /><label for="refresh_off">Off</label>
+                    <input type="radio" id="refresh_1sec" name="refresh" value="1" <% refresh == 1 ? 'checked="checked"' : '' %> /><label for="refresh_1sec">1 sec</label>
+                    <input type="radio" id="refresh_3sec" name="refresh" value="3" <% refresh == 3 ? 'checked="checked"' : '' %> /><label for="refresh_3sec">3 secs</label>
+                    <input type="radio" id="refresh_5sec" name="refresh" value="5" <% refresh == 5 ? 'checked="checked"' : '' %> /><label for="refresh_5sec">5 secs</label>
+                </div>
+                
+                <div id="label-tabs" role="label">Display:</div>        
+                <div id="buttonset-tabs" class="buttonset">
+                    <input type="radio" id="tabs_overview" name="tab" value="overview" <% tab == 'overview' ? 'checked="checked"' : '' %> /><label for="tabs_overview">Overview</label>
+                    <input type="radio" id="tabs_memory" name="tab" value="memory" <% tab == 'memory' ? 'checked="checked"' : '' %> /><label for="tabs_memory">Memory</label>
+                    <input type="radio" id="tabs_threads" name="tab" value="threads" <% tab == 'threads' ? 'checked="checked"' : '' %> /><label for="tabs_threads">Threads</label>
+                    <input type="radio" id="tabs_mbeans" name="tab" value="mbeans" <% tab == 'mbeans' ? 'checked="checked"' : '' %> /><label for="tabs_mbeans">MBeans</label>
+                    <input type="radio" id="tabs_info" name="tab" value="info" <% tab == 'info' ? 'checked="checked"' : '' %> /><label for="tabs_info">Information</label>
+                </div>
+            </div>
+        </div>
+        <br class="clear" /><br />
+        
+        <div id="system-info-summary">
+            <div class="quick-summary">
+                <%
+                    unitLabel = 'MB'
+                    unitDividend = 1024 * 1024;
+                    numberFormat("0");
+                %>
+                
+                <% freeMemory = (memoryMXBean.heapMemoryUsage.max - memoryMXBean.heapMemoryUsage.used) / unitDividend; %>
+                <div class="metric">
+                    <div id="freeHeapMemory">
+                        <div class="value"><span class="number"><% freeMemory %></span> <% unitLabel %></div>
+                        <div class="label">Free Heap Memory</div>
+                    </div>
+                </div>
+                
+                <% usedMemory = memoryMXBean.heapMemoryUsage.used / unitDividend; %>
+                <div class="metric">
+                    <div id="usedHeapMemory">
+                        <div class="value"><span class="number"><% usedMemory %></span> <% unitLabel %></div>
+                        <div class="label">Used Heap Memory</div>
+                    </div>
+                </div>
+                
+                <% totalMemory = memoryMXBean.heapMemoryUsage.max / unitDividend; %>
+                <div class="metric">
+                    <div id="totalHeapMemory">
+                        <div class="value"><span class="number"><% totalMemory %></span> <% unitLabel %></div>
+                        <div class="label">Total Heap Memory</div>
+                    </div>
+                </div>
+                
+                <div class="separator">&nbsp;</div>
+                
+                <% freeMemory = (memoryMXBean.nonHeapMemoryUsage.max - memoryMXBean.nonHeapMemoryUsage.used) / unitDividend; %>
+                <div class="metric">
+                    <div id="freeNonHeapMemory">
+                        <div class="value"><span class="number"><% freeMemory %></span> <% unitLabel %></div>
+                        <div class="label">Free Non-Heap Memory</div>
+                    </div>
+                </div>
+                
+                <% usedMemory = memoryMXBean.nonHeapMemoryUsage.used / unitDividend; %>
+                <div class="metric">
+                    <div id="usedNonHeapMemory">
+                        <div class="value"><span class="number"><% usedMemory %></span> <% unitLabel %></div>
+                        <div class="label">Used Non-Heap Memory</div>
+                    </div>
+                </div>
+                
+                <% totalMemory = memoryMXBean.nonHeapMemoryUsage.max / unitDividend; %>
+                <div class="metric">
+                    <div id="totalNonHeapMemory">
+                        <div class="value"><span class="number"><% totalMemory %></span> <% unitLabel %></div>
+                        <div class="label">Total Non-Heap Memory</div>
+                    </div>
+                </div>
+                
+                <br class="clear" />
+            </div>
+        </div>
+    </section>
+    
+    <div id="system-info-overview" class="system-info-tab <% tab == 'overview' ? 'ui-active' : '' %>" style="display: <% tab == 'overview' ? 'block' : 'none' %>;">
+        <% call system.format.getSystemInfoOverview(); %>
+    </div>
+    <div id="system-info-memory" class="system-info-tab <% tab == 'memory' ? 'ui-active' : '' %>" style="display: <% tab == 'memory' ? 'block' : 'none' %>;">
+        <% call system.format.getSystemInfoMemory(); %>
+    </div>
+    <div id="system-info-threads" class="system-info-tab <% tab == 'threads' ? 'ui-active' : '' %>" style="display: <% tab == 'threads' ? 'block' : 'none' %>;">
+        <% call system.format.getSystemInfoThreads(); %>
+    </div>
+    <div id="system-info-mbeans" class="system-info-tab <% tab == 'mbeans' ? 'ui-active' : '' %>" style="display: <% tab == 'mbeans' ? 'block' : 'none' %>;">
+        <% call system.format.getSystemInfoMBeans(); %>
+    </div>
+    <div id="system-info-info" class="system-info-tab <% tab == 'info' ? 'ui-active' : '' %>" style="display: <% tab == 'info' ? 'block' : 'none' %>;">
+        <% call system.format.getSystemInfo(); %>
+    </div>
+</article>

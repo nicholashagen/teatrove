@@ -13,7 +13,7 @@
 	-->
     
     <log>
-        <debug>false</debug>
+        <debug>true</debug>
         <info>true</info>
         <warn>true</warn>
         <error>true</error>
@@ -23,7 +23,7 @@
 	define the administration key required to access the administration pages
 	ie: http://[host]:[port]/[context]/system/teaservlet/Admin?[key]=[value]
 	-->
-    
+    <template.path>file://Users/chasses/src/git/dev1/TeaTrove/teaadmin/src/main/tea</template.path>
     <admin.key>secret</admin.key>
     <admin.value>password</admin.value>
 

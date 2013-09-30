@@ -67,6 +67,8 @@ import org.teatrove.trove.util.plugin.PluginFactoryConfigSupport;
 import org.teatrove.trove.util.plugin.PluginFactoryException;
 import org.teatrove.trove.util.resources.ResourceFactory;
 
+import com.newrelic.api.agent.NewRelic;
+
 /**
  * The TeaServlet allows Tea templates to define dynamic web pages. The URI
  * that is passed into the servlet determines what template will be called.
@@ -150,6 +152,7 @@ public class TeaServlet extends HttpServlet {
     private TeaServletStatusListener mTemplateListener;
     
     private Future<Boolean> mInitializer;
+    
     
     /**
      * Initializes the TeaServlet. Creates the logger and loads the user's
@@ -1059,15 +1062,52 @@ public class TeaServlet extends HttpServlet {
 	        }
 	        catch (ServletException e) {
 	            // Log exception
+	        	java.util.HashMap<String, String> errorParams = new java.util.HashMap<String, String>();
+
 	            StringBuffer msg = new StringBuffer();
 	            msg.append("Error processing request for ");
 	            msg.append(appRequest.getRequestURI());
+   	        	errorParams.put("uri",appRequest.getRequestURI());
+
 	            if (appRequest.getQueryString() != null) {
 	                msg.append('?');
 	                msg.append(appRequest.getQueryString());
+		        	errorParams.put("queryString", appRequest.getQueryString());
 	            }
 	            mLog.error(msg.toString());
-	
+	            // Report error to new relic for logging purposes.
+	            if ( mLog instanceof TeaLog ) {
+	            	TeaLog tLog = (TeaLog)mLog;
+	            	String newRelicMessage = null;
+	            	TeaLog.TeaStackTraceLine [] lines = tLog.getTeaStackTraceLines(e);
+	            	String stackTrace = tLog.printTeaStackTraceLines(tLog.getTeaStackTraceLines(e));
+	            	
+	            	String rootCause = "";
+	            	Throwable x = e;
+	            	while ( x.getCause() != null ) {
+	            		x = x.getCause();
+	            		rootCause = x.getClass().getCanonicalName();
+	            	}
+	            	for( TeaLog.TeaStackTraceLine oneLine : lines ) {
+	            		if ( oneLine.getTemplateName() != null ) {
+	            			newRelicMessage = rootCause + " in template " + oneLine.getTemplateName() + " at line " + oneLine.getLineNumber();
+	            			
+	            			errorParams.put("Template", oneLine.getTemplateName());
+	            			errorParams.put("Line Number", oneLine.getLineNumber().toString());
+	            			errorParams.put("Complete Line", oneLine.getLine());
+	            			errorParams.put("Stack Trace", stackTrace);
+	            		}	            		
+	            	}
+	            	if ( template == null ) {
+	            		newRelicMessage = stackTrace;
+	            	}
+	            	mLog.error("New Relic Message is: " + newRelicMessage );
+	            	NewRelic.noticeError(newRelicMessage,errorParams);
+	            } else {
+	            	NewRelic.noticeError(e, errorParams);	
+	            }
+	            
+	            
 	            Throwable t = e;
 	            while (t instanceof ServletException) {
 	                e = (ServletException)t;

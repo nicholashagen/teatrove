@@ -157,7 +157,7 @@ public class TeaLog extends Log {
      * @param lines
      * @return  the output of the stack trace lines as a string
      */
-    private String printTeaStackTraceLines(TeaStackTraceLine[] lines) {
+    public String printTeaStackTraceLines(TeaStackTraceLine[] lines) {
 
         String result = "";
         for (int line = 0; line < lines.length; line++) {
@@ -177,7 +177,7 @@ public class TeaLog extends Log {
      * @param t
      * @return  the separated stack trace lines
      */
-    private TeaStackTraceLine[] getTeaStackTraceLines(Throwable t) {
+    public TeaStackTraceLine[] getTeaStackTraceLines(Throwable t) {
 
         // grab the existing stack trace
         StringWriter stackTraceGrabber = new StringWriter();

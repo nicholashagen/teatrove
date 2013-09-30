@@ -1,0 +1,337 @@
+[INFO] Scanning for projects...
+[WARNING] 
+[WARNING] Some problems were encountered while building the effective model for org.teatrove:teacompiler-maven-plugin:maven-plugin:4.2.0-espn-19-SNAPSHOT
+[WARNING] 'build.plugins.plugin.version' for org.codehaus.plexus:plexus-maven-plugin is missing. @ line 109, column 21
+[WARNING] 'reporting.plugins.plugin.version' for org.codehaus.plexus:plexus-maven-plugin is missing. @ line 125, column 21
+[WARNING] 
+[WARNING] It is highly recommended to fix these problems because they threaten the stability of your build.
+[WARNING] 
+[WARNING] For this reason, future Maven versions might no longer support building such malformed projects.
+[WARNING] 
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] Trove, Tea and TeaServlet
+[INFO] Build Tools
+[INFO] PackageInfo Maven Mojo
+[INFO] Trove
+[INFO] Tea
+[INFO] TeaTools
+[INFO] Tea Compiler for Maven
+[INFO] Tea Compiler API
+[INFO] Tea Compiler Maven Mojo
+[INFO] Toolbox
+[INFO] TeaServlet
+[INFO] TeaApps
+[INFO] TeaAdmin
+[INFO] Examples
+[INFO] Hello World TeaTrove Example
+[INFO] Directory Browser TeaTrove Example
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building Trove, Tea and TeaServlet 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ teatrove ---
+[INFO] org.teatrove:teatrove:pom:4.2.0-espn-19-SNAPSHOT
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building Build Tools 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ build-tools ---
+[INFO] org.teatrove:build-tools:pom:4.2.0-espn-19-SNAPSHOT
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building PackageInfo Maven Mojo 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ package-info-maven-plugin ---
+[INFO] org.teatrove:package-info-maven-plugin:maven-plugin:4.2.0-espn-19-SNAPSHOT
+[INFO] +- org.apache.maven:maven-plugin-api:jar:3.0:compile
+[INFO] |  +- org.apache.maven:maven-model:jar:3.0:compile
+[INFO] |  +- org.apache.maven:maven-artifact:jar:3.0:compile
+[INFO] |  \- org.sonatype.sisu:sisu-inject-plexus:jar:1.4.2:compile
+[INFO] |     \- org.sonatype.sisu:sisu-inject-bean:jar:1.4.2:compile
+[INFO] |        \- org.sonatype.sisu:sisu-guice:jar:noaop:2.1.7:compile
+[INFO] \- org.apache.maven:maven-core:jar:3.0:compile
+[INFO]    +- org.apache.maven:maven-settings:jar:3.0:compile
+[INFO]    +- org.apache.maven:maven-settings-builder:jar:3.0:compile
+[INFO]    +- org.apache.maven:maven-repository-metadata:jar:3.0:compile
+[INFO]    +- org.apache.maven:maven-model-builder:jar:3.0:compile
+[INFO]    +- org.apache.maven:maven-aether-provider:jar:3.0:runtime
+[INFO]    +- org.sonatype.aether:aether-impl:jar:1.7:compile
+[INFO]    |  \- org.sonatype.aether:aether-spi:jar:1.7:compile
+[INFO]    +- org.sonatype.aether:aether-api:jar:1.7:compile
+[INFO]    +- org.sonatype.aether:aether-util:jar:1.7:compile
+[INFO]    +- org.codehaus.plexus:plexus-interpolation:jar:1.14:compile
+[INFO]    +- org.codehaus.plexus:plexus-utils:jar:2.0.4:compile
+[INFO]    +- org.codehaus.plexus:plexus-classworlds:jar:2.2.3:compile
+[INFO]    +- org.codehaus.plexus:plexus-component-annotations:jar:1.5.5:compile
+[INFO]    \- org.sonatype.plexus:plexus-sec-dispatcher:jar:1.3:compile
+[INFO]       \- org.sonatype.plexus:plexus-cipher:jar:1.4:compile
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building Trove 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ trove ---
+[INFO] org.teatrove:trove:jar:4.2.0-espn-19-SNAPSHOT
+[INFO] +- org.jdom:jdom:jar:1.1:compile
+[INFO] +- commons-lang:commons-lang:jar:2.3:compile
+[INFO] \- junit:junit:jar:4.8.2:compile
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building Tea 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ tea ---
+[INFO] org.teatrove:tea:jar:4.2.0-espn-19-SNAPSHOT
+[INFO] +- org.teatrove:trove:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] |  +- org.jdom:jdom:jar:1.1:compile
+[INFO] |  \- commons-lang:commons-lang:jar:2.3:compile
+[INFO] +- junit:junit:jar:4.8.2:compile
+[INFO] \- joda-time:joda-time:jar:1.6.2:compile
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building TeaTools 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ teatools ---
+[INFO] org.teatrove:teatools:jar:4.2.0-espn-19-SNAPSHOT
+[INFO] +- org.teatrove:tea:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] +- org.teatrove:trove:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] |  +- org.jdom:jdom:jar:1.1:compile
+[INFO] |  \- commons-lang:commons-lang:jar:2.3:compile
+[INFO] +- junit:junit:jar:4.8.2:compile
+[INFO] \- joda-time:joda-time:jar:1.6.2:compile
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building Tea Compiler for Maven 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ teacompiler ---
+[INFO] org.teatrove:teacompiler:pom:4.2.0-espn-19-SNAPSHOT
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building Tea Compiler API 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ teacompiler-api ---
+[INFO] org.teatrove:teacompiler-api:jar:4.2.0-espn-19-SNAPSHOT
+[INFO] +- org.apache.maven:maven-plugin-api:jar:3.0:compile
+[INFO] |  +- org.apache.maven:maven-model:jar:3.0:compile
+[INFO] |  +- org.apache.maven:maven-artifact:jar:3.0:compile
+[INFO] |  \- org.sonatype.sisu:sisu-inject-plexus:jar:1.4.2:compile
+[INFO] |     +- org.codehaus.plexus:plexus-component-annotations:jar:1.5.4:compile
+[INFO] |     +- org.codehaus.plexus:plexus-classworlds:jar:2.2.3:compile
+[INFO] |     \- org.sonatype.sisu:sisu-inject-bean:jar:1.4.2:compile
+[INFO] |        \- org.sonatype.sisu:sisu-guice:jar:noaop:2.1.7:compile
+[INFO] +- org.teatrove:tea:jar:4.2.0-espn-19-SNAPSHOT:provided
+[INFO] |  +- org.teatrove:trove:jar:4.2.0-espn-19-SNAPSHOT:provided
+[INFO] |  |  +- org.jdom:jdom:jar:1.1:provided
+[INFO] |  |  \- commons-lang:commons-lang:jar:2.3:provided
+[INFO] |  \- joda-time:joda-time:jar:1.6.2:provided
+[INFO] +- org.slf4j:slf4j-api:jar:1.6.1:compile
+[INFO] \- org.codehaus.plexus:plexus-container-default:jar:1.0-alpha-9-stable-1:compile
+[INFO]    +- junit:junit:jar:4.8.2:compile
+[INFO]    +- org.codehaus.plexus:plexus-utils:jar:1.5.1:compile
+[INFO]    \- classworlds:classworlds:jar:1.1-alpha-2:compile
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building Tea Compiler Maven Mojo 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ teacompiler-maven-plugin ---
+[INFO] org.teatrove:teacompiler-maven-plugin:maven-plugin:4.2.0-espn-19-SNAPSHOT
+[INFO] +- org.teatrove:tea:jar:4.2.0-espn-19-SNAPSHOT:provided
+[INFO] |  \- joda-time:joda-time:jar:1.6.2:provided
+[INFO] +- org.teatrove:trove:jar:4.2.0-espn-19-SNAPSHOT:provided
+[INFO] |  \- org.jdom:jdom:jar:1.1:provided
+[INFO] +- org.apache.maven:maven-plugin-api:jar:3.0:compile
+[INFO] |  +- org.apache.maven:maven-model:jar:3.0:compile
+[INFO] |  +- org.apache.maven:maven-artifact:jar:3.0:compile
+[INFO] |  \- org.sonatype.sisu:sisu-inject-plexus:jar:1.4.2:compile
+[INFO] |     \- org.sonatype.sisu:sisu-inject-bean:jar:1.4.2:compile
+[INFO] |        \- org.sonatype.sisu:sisu-guice:jar:noaop:2.1.7:compile
+[INFO] +- org.apache.maven:maven-core:jar:3.0:compile
+[INFO] |  +- org.apache.maven:maven-settings:jar:3.0:compile
+[INFO] |  +- org.apache.maven:maven-settings-builder:jar:3.0:compile
+[INFO] |  +- org.apache.maven:maven-repository-metadata:jar:3.0:compile
+[INFO] |  +- org.apache.maven:maven-model-builder:jar:3.0:compile
+[INFO] |  +- org.apache.maven:maven-aether-provider:jar:3.0:runtime
+[INFO] |  +- org.sonatype.aether:aether-impl:jar:1.7:compile
+[INFO] |  |  \- org.sonatype.aether:aether-spi:jar:1.7:compile
+[INFO] |  +- org.sonatype.aether:aether-api:jar:1.7:compile
+[INFO] |  +- org.sonatype.aether:aether-util:jar:1.7:compile
+[INFO] |  +- org.codehaus.plexus:plexus-interpolation:jar:1.14:compile
+[INFO] |  +- org.codehaus.plexus:plexus-utils:jar:1.5.1:compile
+[INFO] |  +- org.codehaus.plexus:plexus-classworlds:jar:2.2.3:compile
+[INFO] |  +- org.codehaus.plexus:plexus-component-annotations:jar:1.5.5:compile
+[INFO] |  \- org.sonatype.plexus:plexus-sec-dispatcher:jar:1.3:compile
+[INFO] |     \- org.sonatype.plexus:plexus-cipher:jar:1.4:compile
+[INFO] +- commons-beanutils:commons-beanutils:jar:1.7.0:compile
+[INFO] |  \- commons-logging:commons-logging:jar:1.0.3:compile
+[INFO] +- commons-lang:commons-lang:jar:2.3:compile
+[INFO] +- org.teatrove:teacompiler-api:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] |  +- org.slf4j:slf4j-api:jar:1.6.1:compile
+[INFO] |  \- org.codehaus.plexus:plexus-container-default:jar:1.0-alpha-9-stable-1:compile
+[INFO] |     +- junit:junit:jar:4.8.2:compile
+[INFO] |     \- classworlds:classworlds:jar:1.1-alpha-2:compile
+[INFO] \- org.slf4j:slf4j-simple:jar:1.6.1:runtime
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building Toolbox 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ toolbox ---
+[INFO] org.teatrove:toolbox:jar:4.2.0-espn-19-SNAPSHOT
+[INFO] +- org.teatrove:trove:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] |  +- org.jdom:jdom:jar:1.1:compile
+[INFO] |  +- commons-lang:commons-lang:jar:2.3:compile
+[INFO] |  \- junit:junit:jar:4.8.2:compile
+[INFO] +- org.teatrove:tea:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] \- joda-time:joda-time:jar:1.6.2:compile
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building TeaServlet 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ teaservlet ---
+[INFO] org.teatrove:teaservlet:jar:4.2.0-espn-19-SNAPSHOT
+[INFO] +- org.teatrove:trove:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] |  +- org.jdom:jdom:jar:1.1:compile
+[INFO] |  +- commons-lang:commons-lang:jar:2.3:compile
+[INFO] |  \- junit:junit:jar:4.8.2:compile
+[INFO] +- org.teatrove:tea:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] +- org.teatrove:teatools:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] +- javax.servlet:servlet-api:jar:2.5:compile
+[INFO] +- net.sf.scannotation:scannotation:jar:1.0.2:compile
+[INFO] |  \- javassist:javassist:jar:3.6.0.GA:compile
+[INFO] +- joda-time:joda-time:jar:1.6.2:compile
+[INFO] +- org.teatrove:toolbox:jar:4.2.0-espn-19-SNAPSHOT:provided
+[INFO] \- com.newrelic.agent.java:newrelic-api:jar:2.21.3:compile
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building TeaApps 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ teaapps ---
+[INFO] org.teatrove:teaapps:jar:4.2.0-espn-19-SNAPSHOT
+[INFO] +- org.teatrove:teaservlet:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] |  +- org.teatrove:trove:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] |  |  +- org.jdom:jdom:jar:1.1:compile
+[INFO] |  |  +- commons-lang:commons-lang:jar:2.3:compile
+[INFO] |  |  \- junit:junit:jar:4.8.2:compile
+[INFO] |  +- org.teatrove:tea:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] |  +- org.teatrove:teatools:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] |  +- javax.servlet:servlet-api:jar:2.5:compile
+[INFO] |  +- net.sf.scannotation:scannotation:jar:1.0.2:compile
+[INFO] |  |  \- javassist:javassist:jar:3.6.0.GA:compile
+[INFO] |  +- joda-time:joda-time:jar:1.6.2:compile
+[INFO] |  \- com.newrelic.agent.java:newrelic-api:jar:2.21.3:compile
+[INFO] +- org.apache.commons:commons-math:jar:2.1:compile
+[INFO] +- commons-codec:commons-codec:jar:1.5:compile
+[INFO] +- commons-httpclient:commons-httpclient:jar:3.1:compile
+[INFO] \- commons-logging:commons-logging:jar:1.1.1:compile
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building TeaAdmin 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ teaadmin ---
+[INFO] org.teatrove:teaadmin:jar:4.2.0-espn-19-SNAPSHOT
+[INFO] +- org.teatrove:teaservlet:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] |  +- org.teatrove:trove:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] |  |  +- org.jdom:jdom:jar:1.1:compile
+[INFO] |  |  +- commons-lang:commons-lang:jar:2.3:compile
+[INFO] |  |  \- junit:junit:jar:4.8.2:compile
+[INFO] |  +- org.teatrove:tea:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] |  +- org.teatrove:teatools:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO] |  +- javax.servlet:servlet-api:jar:2.5:compile
+[INFO] |  +- net.sf.scannotation:scannotation:jar:1.0.2:compile
+[INFO] |  |  \- javassist:javassist:jar:3.6.0.GA:compile
+[INFO] |  +- joda-time:joda-time:jar:1.6.2:compile
+[INFO] |  \- com.newrelic.agent.java:newrelic-api:jar:2.21.3:compile
+[INFO] \- org.teatrove:teaapps:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO]    +- org.apache.commons:commons-math:jar:2.1:compile
+[INFO]    +- commons-codec:commons-codec:jar:1.5:compile
+[INFO]    +- commons-httpclient:commons-httpclient:jar:3.1:compile
+[INFO]    \- commons-logging:commons-logging:jar:1.1.1:compile
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building Examples 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ examples ---
+[INFO] org.teatrove:examples:pom:4.2.0-espn-19-SNAPSHOT
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building Hello World TeaTrove Example 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ hello-world ---
+[INFO] org.teatrove.examples:hello-world:war:4.2.0-espn-19-SNAPSHOT
+[INFO] +- javax.servlet:servlet-api:jar:2.5:compile
+[INFO] \- org.teatrove:teaservlet:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO]    +- org.teatrove:trove:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO]    |  +- org.jdom:jdom:jar:1.1:compile
+[INFO]    |  +- commons-lang:commons-lang:jar:2.3:compile
+[INFO]    |  \- junit:junit:jar:4.8.2:compile
+[INFO]    +- org.teatrove:tea:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO]    +- org.teatrove:teatools:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO]    +- net.sf.scannotation:scannotation:jar:1.0.2:compile
+[INFO]    |  \- javassist:javassist:jar:3.6.0.GA:compile
+[INFO]    +- joda-time:joda-time:jar:1.6.2:compile
+[INFO]    \- com.newrelic.agent.java:newrelic-api:jar:2.21.3:compile
+[INFO]                                                                         
+[INFO] ------------------------------------------------------------------------
+[INFO] Building Directory Browser TeaTrove Example 4.2.0-espn-19-SNAPSHOT
+[INFO] ------------------------------------------------------------------------
+[INFO] 
+[INFO] --- maven-dependency-plugin:2.1:tree (default-cli) @ directory-browser ---
+[INFO] org.teatrove.examples:directory-browser:war:4.2.0-espn-19-SNAPSHOT
+[INFO] +- javax.servlet:servlet-api:jar:2.5:compile
+[INFO] \- org.teatrove:teaadmin:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO]    +- org.teatrove:teaservlet:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO]    |  +- org.teatrove:trove:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO]    |  |  +- org.jdom:jdom:jar:1.1:compile
+[INFO]    |  |  +- commons-lang:commons-lang:jar:2.3:compile
+[INFO]    |  |  \- junit:junit:jar:4.8.2:compile
+[INFO]    |  +- org.teatrove:tea:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO]    |  +- org.teatrove:teatools:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO]    |  +- net.sf.scannotation:scannotation:jar:1.0.2:compile
+[INFO]    |  |  \- javassist:javassist:jar:3.6.0.GA:compile
+[INFO]    |  +- joda-time:joda-time:jar:1.6.2:compile
+[INFO]    |  \- com.newrelic.agent.java:newrelic-api:jar:2.21.3:compile
+[INFO]    \- org.teatrove:teaapps:jar:4.2.0-espn-19-SNAPSHOT:compile
+[INFO]       +- org.apache.commons:commons-math:jar:2.1:compile
+[INFO]       +- commons-codec:commons-codec:jar:1.5:compile
+[INFO]       +- commons-httpclient:commons-httpclient:jar:3.1:compile
+[INFO]       \- commons-logging:commons-logging:jar:1.1.1:compile
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary:
+[INFO] 
+[INFO] Trove, Tea and TeaServlet ......................... SUCCESS [0.620s]
+[INFO] Build Tools ....................................... SUCCESS [0.004s]
+[INFO] PackageInfo Maven Mojo ............................ SUCCESS [0.413s]
+[INFO] Trove ............................................. SUCCESS [0.044s]
+[INFO] Tea ............................................... SUCCESS [0.023s]
+[INFO] TeaTools .......................................... SUCCESS [0.020s]
+[INFO] Tea Compiler for Maven ............................ SUCCESS [0.004s]
+[INFO] Tea Compiler API .................................. SUCCESS [0.062s]
+[INFO] Tea Compiler Maven Mojo ........................... SUCCESS [0.086s]
+[INFO] Toolbox ........................................... SUCCESS [0.016s]
+[INFO] TeaServlet ........................................ SUCCESS [0.052s]
+[INFO] TeaApps ........................................... SUCCESS [0.080s]
+[INFO] TeaAdmin .......................................... SUCCESS [0.037s]
+[INFO] Examples .......................................... SUCCESS [0.010s]
+[INFO] Hello World TeaTrove Example ...................... SUCCESS [0.027s]
+[INFO] Directory Browser TeaTrove Example ................ SUCCESS [0.028s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time: 2.330s
+[INFO] Finished at: Thu Sep 26 14:21:24 EDT 2013
+[INFO] Final Memory: 11M/81M
+[INFO] ------------------------------------------------------------------------

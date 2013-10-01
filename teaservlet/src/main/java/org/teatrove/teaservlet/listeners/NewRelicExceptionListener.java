@@ -8,7 +8,7 @@ import org.teatrove.trove.log.Log;
 import com.go.trove.util.PropertyMap;
 import com.newrelic.api.agent.NewRelic;
 
-public class NewRelicExceptionListener extends ExceptionListener {
+public class NewRelicExceptionListener implements ExceptionListener {
 	
 	public NewRelicExceptionListener() {
 		

@@ -71,7 +71,7 @@ public class TeaLog extends Log {
 
     private static final long serialVersionUID = 1L;
 
-    private final String TEA_EXCEPTION = ".tea:";
+    private static final String TEA_EXCEPTION = ".tea:";
 
     /**
      * @param name
@@ -157,7 +157,7 @@ public class TeaLog extends Log {
      * @param lines
      * @return  the output of the stack trace lines as a string
      */
-    private String printTeaStackTraceLines(TeaStackTraceLine[] lines) {
+    public static String printTeaStackTraceLines(TeaStackTraceLine[] lines) {
 
         String result = "";
         for (int line = 0; line < lines.length; line++) {
@@ -177,7 +177,7 @@ public class TeaLog extends Log {
      * @param t
      * @return  the separated stack trace lines
      */
-    private TeaStackTraceLine[] getTeaStackTraceLines(Throwable t) {
+    public static TeaStackTraceLine[] getTeaStackTraceLines(Throwable t) {
 
         // grab the existing stack trace
         StringWriter stackTraceGrabber = new StringWriter();
@@ -247,63 +247,6 @@ public class TeaLog extends Log {
         }
         else {
             return null;
-        }
-    }
-
-    /**
-     * The TeaStackTraceLine class contains the values of a stack trace line.
-     * It contains the template name and line number.  It also includes the
-     * original stack trace line from the JVM.
-     *
-     * @author Reece Wilton
-     */
-    public class TeaStackTraceLine {
-
-        private String mTemplateName;
-        private Integer mLineNumber;
-        private String mLine;
-
-        public TeaStackTraceLine(String templateName,
-                                 Integer lineNumber,
-                                 String line) {
-            mTemplateName = templateName;
-            mLineNumber = lineNumber;
-            mLine = line;
-        }
-
-        /**
-         * @return  the original stack trace line
-         */
-        public String getLine() {
-            return mLine;
-        }
-
-        /**
-         * @return  the Tea template line number.  May be null even if a
-         * template name exists.
-         */
-        public Integer getLineNumber() {
-            return mLineNumber;
-        }
-
-        /**
-         * @return  the template name.  Will be null if the line isn't for a
-         * Tea template.
-         */
-        public String getTemplateName() {
-            return mTemplateName;
-        }
-
-        public String toString() {
-            if (mLineNumber != null) {
-                return "\tat " +
-                       ((mLineNumber != null) ? "line " + mLineNumber + " of "
-                                                : "unknown line of ")
-                       + "template " + mTemplateName;
-            }
-            else {
-                return mLine;
-            }
         }
     }
 }

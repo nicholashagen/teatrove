@@ -16,7 +16,7 @@
 
 package org.teatrove.tea.log;
 
-import org.teatrove.tea.log.TeaLog.TeaStackTraceLine;
+import org.teatrove.tea.log.TeaStackTraceLine;
 import org.teatrove.trove.log.Log;
 import org.teatrove.trove.log.LogEvent;
 

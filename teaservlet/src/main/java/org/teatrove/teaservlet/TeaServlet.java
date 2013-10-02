@@ -33,6 +33,8 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.regex.Pattern;
+import java.util.ArrayList;
+import java.util.Iterator;
 
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletContext;
@@ -47,11 +49,14 @@ import org.teatrove.tea.engine.Template;
 import org.teatrove.tea.log.TeaLog;
 import org.teatrove.tea.log.TeaLogEvent;
 import org.teatrove.tea.log.TeaLogListener;
+import org.teatrove.tea.log.TeaStackTraceLine;
 import org.teatrove.tea.runtime.TemplateLoader;
 import org.teatrove.teaservlet.assets.Asset;
 import org.teatrove.teaservlet.stats.TeaServletRequestStats;
 import org.teatrove.teaservlet.stats.TemplateStats;
 import org.teatrove.teaservlet.util.FilteredServletContext;
+import org.teatrove.teaservlet.listeners.Listener;
+import org.teatrove.teaservlet.listeners.ExceptionListener;
 import org.teatrove.trove.log.Log;
 import org.teatrove.trove.log.LogEvent;
 import org.teatrove.trove.log.LogListener;
@@ -142,6 +147,8 @@ public class TeaServlet extends HttpServlet {
     private String mAdminValue;
     private Pattern mStartupPath;
     private String mStartupFile;
+
+    private ArrayList<Listener> mListeners = new ArrayList<Listener>();
     
     private TeaServletRequestStats mTeaServletRequestStats;
 
@@ -240,6 +247,8 @@ public class TeaServlet extends HttpServlet {
             mTeaServletRequestStats.applyProperties(mProperties.subMap("stats"));
 
             PluginContext pluginContext = loadPlugins(mProperties, mLog);
+
+            loadListeners(mProperties, mLog);
     
             mEngine = createTeaServletEngine();
     
@@ -841,6 +850,34 @@ public class TeaServlet extends HttpServlet {
             }
         }
     }
+    
+    private void loadListeners(PropertyMap properties, Log log) {
+    	PropertyMap listenerProperties =  properties.subMap("listeners");
+    	Set keySet = listenerProperties.subMapKeySet();
+    	Iterator iterator = keySet.iterator();
+    	while ( iterator.hasNext() ) {
+    		String name = (String)iterator.next();
+    		PropertyMap initProps = listenerProperties.subMap(name);
+    		String className = initProps.getString("class");
+    		try {
+    			Class clazz = Class.forName(className);
+    			Listener listener = (org.teatrove.teaservlet.listeners.Listener)clazz.newInstance();
+        		mListeners.add(listener);    		
+    		}
+    		catch ( ClassNotFoundException cnfe ) {
+    			mLog.warn("Error loading listener, class not found: ");
+    			mLog.warn(cnfe);
+    		}
+    		catch ( java.lang.InstantiationException ie ) {
+    			mLog.warn("Error loading listener, unable to instantiate: ");
+    			mLog.warn(ie);
+    		}
+    		catch ( java.lang.IllegalAccessException iae ) {
+    			mLog.warn("Erorr loading listener, unable to access the instance: ");
+    			mLog.warn(iae);
+    		}
+    	}
+    }
 
     private PluginContext loadPlugins(PropertyMap properties, Log log) {
         
@@ -1062,12 +1099,19 @@ public class TeaServlet extends HttpServlet {
 	            StringBuffer msg = new StringBuffer();
 	            msg.append("Error processing request for ");
 	            msg.append(appRequest.getRequestURI());
+
 	            if (appRequest.getQueryString() != null) {
 	                msg.append('?');
 	                msg.append(appRequest.getQueryString());
+
 	            }
 	            mLog.error(msg.toString());
-	
+	            for ( Listener listener: mListeners ) {
+	            	if ( listener instanceof ExceptionListener ) {
+	            		((ExceptionListener)listener).handle(e);
+	            	}
+	            }
+	            
 	            Throwable t = e;
 	            while (t instanceof ServletException) {
 	                e = (ServletException)t;
